@@ -8,7 +8,7 @@ Portability : non-portable
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RecursiveDo #-}
-module Reflex.Server.Socket.ByteString (
+module Reflex.Server.Socket.Binary (
     SocketConfig(..)
   , SocketOut(..)
   , socket
@@ -30,20 +30,23 @@ import Network.Socket hiding (socket, send, sendTo, recv, recvFrom)
 import Network.Socket.ByteString
 
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Lazy as LB
+
+import Data.Binary
 
 import Reflex
 
-data SocketConfig t =
+data SocketConfig t a =
   SocketConfig {
     _siMaxRx  :: Int
   , _siOpen   :: Event t Socket
-  , _siSend   :: Event t [B.ByteString]
+  , _siSend   :: Event t [a]
   , _siClose  :: Event t ()
   }
 
-data SocketOut t =
+data SocketOut t b =
   SocketOut {
-    _soRecieve :: Event t B.ByteString
+    _soRecieve :: Event t b
   , _soError   :: Event t String
   , _soClosed  :: Event t ()
   }
@@ -54,9 +57,11 @@ socket ::
   , TriggerEvent t m
   , MonadIO (Performable m)
   , MonadIO m
+  , Binary a
+  , Binary b
   ) =>
-  SocketConfig t ->
-  m (SocketOut t)
+  SocketConfig t a ->
+  m (SocketOut t b)
 socket (SocketConfig mxRx eOpen eTx eClose) = mdo
   (eRx, onRx) <- newTriggerEvent
   (eError, onError) <- newTriggerEvent
@@ -82,7 +87,7 @@ socket (SocketConfig mxRx eOpen eTx eClose) = mdo
       case mSock of
         Nothing -> pure False
         Just sock ->
-          (sendAll sock bs >> pure True) `catch`
+          (sendAll sock (LB.toStrict . encode $ bs) >> pure True) `catch`
           (\e -> exHandlerTx e >> pure False)
 
     txLoop = liftIO . void . forkIO . forever $ do
@@ -116,7 +121,9 @@ socket (SocketConfig mxRx eOpen eTx eClose) = mdo
           void . atomically $ tryTakeTMVar isOpenRead
           onClosed ()
         else do
-          onRx bs
+          -- use the incremental decoder here
+          -- catch and handle decoding errors
+          onRx (decode . LB.fromStrict $ bs)
           rxLoop
 
     startRxLoop = liftIO $ do
