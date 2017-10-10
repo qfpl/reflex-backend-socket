@@ -48,7 +48,7 @@ connect2 = basicHost $ do
   performEvent_ $ liftIO . putStrLn <$> _cError c
 
   let
-    eTx = "Hi" <$ _cSocket c
+    eTx = ["Hi"] <$ _cSocket c
     eClose = () <$ _cSocket c
   s <- socket $ SocketConfig 2048 (_cSocket c) eTx eClose
   performEvent_ $ liftIO . BC.putStrLn <$> _soRecieve s
@@ -97,7 +97,7 @@ accept3 = basicHost $ mdo
   performEvent_ $ liftIO . putStrLn <$> _aError a
 
   let
-    eTx = "Hi" <$ _aAcceptSocket a
+    eTx = ["Hi"] <$ _aAcceptSocket a
     eClose = leftmost [() <$ _aAcceptSocket a, _soClosed s]
   s <- socket $ SocketConfig 2048 (fst <$> _aAcceptSocket a) eTx eClose
   performEvent_ $ liftIO . BC.putStrLn <$> _soRecieve s
@@ -114,8 +114,8 @@ connect4 = basicHost $ mdo
   performEvent_ $ liftIO . putStrLn <$> _cError c
 
   let
-    eTx = "Hi" <$ _cSocket c
-    eClose = () <$ _soRecieve s -- leftmost [() <$ _soRecieve s, _soClosed s]
+    eTx = ["Hi"] <$ _cSocket c
+    eClose = leftmost [() <$ _soRecieve s, _soClosed s]
   s <- socket $ SocketConfig 2048 (_cSocket c) eTx eClose
   performEvent_ $ liftIO . BC.putStrLn <$> _soRecieve s
   performEvent_ $ liftIO . putStrLn <$> _soError s
@@ -133,7 +133,7 @@ accept4 = basicHost $ mdo
   performEvent_ $ liftIO . putStrLn <$> _aError a
 
   let
-    eTx = "Hello" <$ _soRecieve s
+    eTx = ["Hello"] <$ _soRecieve s
   s <- socket $ SocketConfig 2048 (fst <$> _aAcceptSocket a) eTx (_soClosed s)
   performEvent_ $ liftIO . BC.putStrLn <$> _soRecieve s
   performEvent_ $ liftIO . putStrLn <$> _soError s

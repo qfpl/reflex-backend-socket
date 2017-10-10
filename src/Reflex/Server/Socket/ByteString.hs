@@ -15,8 +15,9 @@ module Reflex.Server.Socket.ByteString (
   ) where
 
 import Control.Concurrent (forkIO)
+import Control.Concurrent.MVar
 import Control.Monad (unless, forever, void)
-import Data.Foldable (forM_)
+import Data.Foldable (forM_, traverse_)
 import Data.Maybe (isJust, isNothing)
 
 import Control.Exception (IOException, catch, displayException)
@@ -24,6 +25,7 @@ import Control.Monad.Trans (MonadIO(..))
 
 import Control.Monad.STM
 import Control.Concurrent.STM.TMVar
+import Control.Concurrent.STM.TQueue
 
 import Network.Socket hiding (socket, send, sendTo, recv, recvFrom)
 import Network.Socket.ByteString
@@ -33,12 +35,11 @@ import qualified Data.ByteString.Char8 as BC
 
 import Reflex
 
--- do we want an Event in SocketOut for when the send completes?
 data SocketConfig t =
   SocketConfig {
     _siMaxRx  :: Int
   , _siOpen   :: Event t Socket
-  , _siSend   :: Event t B.ByteString
+  , _siSend   :: Event t [B.ByteString]
   , _siClose  :: Event t ()
   }
 
@@ -64,58 +65,76 @@ socket (SocketConfig mxRx eOpen eTx eClose) = mdo
   (eClosed, onClosed) <- newTriggerEvent
 
   isOpenRead <- liftIO . atomically $ newEmptyTMVar
-  isOpenWrite <- liftIO . atomically $ newEmptyTMVar
+  performEvent_ $ ffor eOpen $
+    void . liftIO . atomically . tryPutTMVar isOpenRead
 
-  performEvent_ $ (void . liftIO . atomically . tryPutTMVar isOpenRead) <$> eOpen
-  performEvent_ $ (void . liftIO . atomically . tryPutTMVar isOpenWrite) <$> eOpen
+  isOpenWrite <- liftIO . atomically $ newEmptyTMVar
+  performEvent_ $ ffor eOpen $
+    void . liftIO . atomically . tryPutTMVar isOpenWrite
+
+  payloadQueue <- liftIO newTQueueIO
 
   let
     exHandlerTx :: IOException -> IO ()
-    exHandlerTx e = do
-      void . atomically . tryTakeTMVar $ isOpenWrite
+    exHandlerTx e =
       onError (displayException e)
 
-  let
-    sendFn bs = liftIO $ do
+    sendFn bs = do
       mSock <- atomically . tryReadTMVar $ isOpenWrite
-      forM_ mSock $ \sock ->
-        sendAll sock bs `catch` exHandlerTx
+      case mSock of
+        Nothing -> pure False
+        Just sock ->
+          (sendAll sock bs >> pure True) `catch`
+          (\e -> exHandlerTx e >> pure False)
 
-  performEvent_ $ sendFn <$> eTx
+    txLoop = liftIO . void . forkIO . forever $ do
+      bs <- atomically $ do
+        pl     <- readTQueue payloadQueue
+        open   <- tryReadTMVar isOpenWrite
+        if isJust open then return pl else retry
+      success <- sendFn bs
+      unless success $
+        atomically $ unGetTQueue payloadQueue bs
+
+  performEvent_ $ ffor eTx $
+    liftIO . atomically . traverse_ (writeTQueue payloadQueue)
+
+  performEvent_ $ txLoop <$ eOpen
+
+  let
+    exHandlerRx :: IOException -> IO B.ByteString
+    exHandlerRx e = do
+      mSock <- atomically . tryReadTMVar $ isOpenRead
+      forM_ mSock $ \_ -> onError (displayException e)
+      pure B.empty
+
+    rxLoop = do
+      mSock <- atomically $ tryReadTMVar isOpenRead
+      forM_ mSock $ \sock -> do
+        bs <- recv sock mxRx `catch` exHandlerRx
+
+        if B.null bs
+        then do
+          void . atomically $ tryTakeTMVar isOpenRead
+          onClosed ()
+        else do
+          onRx bs
+          rxLoop
+
+    startRxLoop = liftIO $ do
+      mSock <- atomically $ tryReadTMVar isOpenRead
+      forM_ mSock $ \_ -> void . forkIO $ rxLoop
+
+  performEvent_ $ startRxLoop <$ eOpen
 
   let
     closeFn = liftIO $ do
       mSock <- atomically . tryReadTMVar $ isOpenWrite
       forM_ mSock $ \sock -> do
-        close sock
         void . atomically . tryTakeTMVar $ isOpenWrite
+        void . atomically . tryTakeTMVar $ isOpenRead
+        close sock
 
-  eCloseDone <- performEvent $ closeFn <$ eClose
-
-  let
-    exHandlerRx :: IOException -> IO B.ByteString
-    exHandlerRx e = do
-      onError (displayException e)
-      pure B.empty
-
-    -- TODO rework this so that it stops looping if mSock goes from non-nothing to nothing
-    -- better yet, start the loop when this thing opens up
-    loop = do
-      mSock <- atomically $ tryReadTMVar isOpenRead
-      forM_ mSock $ \sock -> do
-        bs <- recv sock mxRx `catch` exHandlerRx
-
-        -- this may be the thing that we need to do
-        -- TODO should we pass these back to the main thread via a queue and call the handlers from there?
-        if B.null bs
-        then do
-          void . atomically $ tryTakeTMVar isOpenRead
-          onClosed ()
-        else
-          onRx bs
-
-      loop
-
-  _ <- liftIO . forkIO $ loop
+  performEvent_ $ closeFn <$ eClose
 
   pure $ SocketOut eRx eError eClosed
