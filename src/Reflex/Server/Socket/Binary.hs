@@ -33,6 +33,7 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as LB
 
 import Data.Binary
+import Data.Binary.Get
 
 import Reflex
 
@@ -52,6 +53,7 @@ data SocketOut t b =
   }
 
 socket ::
+  forall t m a b.
   ( Reflex t
   , PerformEvent t m
   , TriggerEvent t m
@@ -111,24 +113,39 @@ socket (SocketConfig mxRx eOpen eTx eClose) = mdo
       forM_ mSock $ \_ -> onError (displayException e)
       pure B.empty
 
-    rxLoop = do
+    handleDecoding :: Decoder b -> IO (Maybe (Decoder b))
+    handleDecoding (Fail _ _ s) = do
+      onError s
+      pure Nothing
+    handleDecoding (Partial f) =
+      pure . Just $ Partial f
+    handleDecoding (Done bs _ a) = do
+      onRx a
+      let decoder = runGetIncremental (get :: Get b)
+      if B.null bs
+      then pure . Just $ decoder
+      else handleDecoding $ pushChunk decoder bs
+
+    shutdownRx = do
+      void . atomically $ tryTakeTMVar isOpenRead
+      onClosed ()
+
+    rxLoop decoder = do
       mSock <- atomically $ tryReadTMVar isOpenRead
       forM_ mSock $ \sock -> do
         bs <- recv sock mxRx `catch` exHandlerRx
 
         if B.null bs
-        then do
-          void . atomically $ tryTakeTMVar isOpenRead
-          onClosed ()
+        then shutdownRx
         else do
-          -- use the incremental decoder here
-          -- catch and handle decoding errors
-          onRx (decode . LB.fromStrict $ bs)
-          rxLoop
+          mDecoder <- handleDecoding $ pushChunk decoder bs
+          case mDecoder of
+            Nothing -> shutdownRx
+            Just decoder' -> rxLoop decoder'
 
     startRxLoop = liftIO $ do
       mSock <- atomically $ tryReadTMVar isOpenRead
-      forM_ mSock $ \_ -> void . forkIO $ rxLoop
+      forM_ mSock $ \_ -> void . forkIO $ rxLoop (runGetIncremental (get :: Get b))
 
   performEvent_ $ startRxLoop <$ eOpen
 

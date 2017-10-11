@@ -5,6 +5,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Reflex.Server.Socket.Scratch.Binary where
 
+import Control.Monad (void)
 import Control.Monad.Trans (liftIO)
 
 import qualified Data.ByteString as B
@@ -158,10 +159,12 @@ connect4 = basicHost $ mdo
   performEvent_ $ liftIO . putStrLn <$> _cError c
 
   let
-    eTx = [Client1 "Hi"] <$ _cSocket c
-    eClose = leftmost [() <$ _soRecieve s, _soClosed s]
+    eTx = [Client1 "Hi", Client1 "Hi again"] <$ _cSocket c
+    eClose = leftmost [void . ffilter id . updated $ dRxDone, _soClosed s]
     sc = SocketConfig 2048 (_cSocket c) eTx eClose
   s :: SocketOut t ServerMessage <- socket sc
+  dRxCount <- count $ _soRecieve s
+  let dRxDone = (>= 2) <$> dRxCount
   performEvent_ $ liftIO . print <$> _soRecieve s
   performEvent_ $ liftIO . putStrLn <$> _soError s
   performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _soClosed s
