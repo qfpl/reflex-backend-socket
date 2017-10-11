@@ -17,9 +17,10 @@ cabal-version:       >=1.10
 
 library
   exposed-modules:     Reflex.Server.Socket
-                     , Reflex.Server.Socket.Scratch
                      , Reflex.Server.Socket.ByteString
                      , Reflex.Server.Socket.Binary
+                     , Reflex.Server.Socket.Scratch.ByteString
+                     , Reflex.Server.Socket.Scratch.Binary
   -- other-modules:       
   -- other-extensions:    
   build-depends:       base >=4.9 && <4.10
