@@ -35,10 +35,10 @@ import Reflex
 
 data SocketConfig t =
   SocketConfig {
-    _siMaxRx  :: Int
-  , _siOpen   :: Event t Socket
-  , _siSend   :: Event t [B.ByteString]
-  , _siClose  :: Event t ()
+    _siInitSocket :: Socket
+  , _siMaxRx      :: Int
+  , _siSend       :: Event t [B.ByteString]
+  , _siClose      :: Event t ()
   }
 
 data SocketOut t =
@@ -51,24 +51,27 @@ data SocketOut t =
 socket ::
   ( Reflex t
   , PerformEvent t m
+  , PostBuild t m
   , TriggerEvent t m
   , MonadIO (Performable m)
   , MonadIO m
   ) =>
   SocketConfig t ->
   m (SocketOut t)
-socket (SocketConfig mxRx eOpen eTx eClose) = mdo
+socket (SocketConfig initSock mxRx eTx eClose) = mdo
   (eRx, onRx) <- newTriggerEvent
   (eError, onError) <- newTriggerEvent
   (eClosed, onClosed) <- newTriggerEvent
 
+  ePostBuild <- getPostBuild
+
   isOpenRead <- liftIO . atomically $ newEmptyTMVar
-  performEvent_ $ ffor eOpen $
-    void . liftIO . atomically . tryPutTMVar isOpenRead
+  performEvent_ $ ffor ePostBuild $
+    const . void . liftIO . atomically . tryPutTMVar isOpenRead $ initSock
 
   isOpenWrite <- liftIO . atomically $ newEmptyTMVar
-  performEvent_ $ ffor eOpen $
-    void . liftIO . atomically . tryPutTMVar isOpenWrite
+  performEvent_ $ ffor ePostBuild $
+    const . void . liftIO . atomically . tryPutTMVar isOpenWrite $ initSock
 
   payloadQueue <- liftIO newTQueueIO
 
@@ -97,7 +100,7 @@ socket (SocketConfig mxRx eOpen eTx eClose) = mdo
   performEvent_ $ ffor eTx $
     liftIO . atomically . traverse_ (writeTQueue payloadQueue)
 
-  performEvent_ $ txLoop <$ eOpen
+  performEvent_ $ txLoop <$ ePostBuild
 
   let
     exHandlerRx :: IOException -> IO B.ByteString
@@ -106,15 +109,17 @@ socket (SocketConfig mxRx eOpen eTx eClose) = mdo
       forM_ mSock $ \_ -> onError (displayException e)
       pure B.empty
 
+    shutdownRx = do
+      void . atomically $ tryTakeTMVar isOpenRead
+      onClosed ()
+
     rxLoop = do
       mSock <- atomically $ tryReadTMVar isOpenRead
       forM_ mSock $ \sock -> do
         bs <- recv sock mxRx `catch` exHandlerRx
 
         if B.null bs
-        then do
-          void . atomically $ tryTakeTMVar isOpenRead
-          onClosed ()
+        then shutdownRx
         else do
           onRx bs
           rxLoop
@@ -123,7 +128,7 @@ socket (SocketConfig mxRx eOpen eTx eClose) = mdo
       mSock <- atomically $ tryReadTMVar isOpenRead
       forM_ mSock $ \_ -> void . forkIO $ rxLoop
 
-  performEvent_ $ startRxLoop <$ eOpen
+  performEvent_ $ startRxLoop <$ ePostBuild
 
   let
     closeFn = liftIO $ do

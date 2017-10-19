@@ -8,6 +8,9 @@ Portability : non-portable
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
 module Reflex.Server.Socket.Binary (
     SocketConfig(..)
   , SocketOut(..)
@@ -18,6 +21,7 @@ import Control.Concurrent (forkIO)
 import Control.Monad (unless, forever, void)
 import Data.Foldable (forM_, traverse_)
 import Data.Maybe (isJust)
+import Data.Proxy (Proxy)
 
 import Control.Exception (IOException, catch, displayException)
 import Control.Monad.Trans (MonadIO(..))
@@ -39,10 +43,10 @@ import Reflex
 
 data SocketConfig t a =
   SocketConfig {
-    _siMaxRx  :: Int
-  , _siOpen   :: Event t Socket
-  , _siSend   :: Event t [a]
-  , _siClose  :: Event t ()
+    _siInitSocket :: Socket
+  , _siMaxRx      :: Int
+  , _siSend       :: Event t [a]
+  , _siClose      :: Event t ()
   }
 
 data SocketOut t b =
@@ -56,6 +60,7 @@ socket ::
   forall t m a b.
   ( Reflex t
   , PerformEvent t m
+  , PostBuild t m
   , TriggerEvent t m
   , MonadIO (Performable m)
   , MonadIO m
@@ -64,18 +69,20 @@ socket ::
   ) =>
   SocketConfig t a ->
   m (SocketOut t b)
-socket (SocketConfig mxRx eOpen eTx eClose) = mdo
+socket (SocketConfig initSock mxRx eTx eClose) = mdo
   (eRx, onRx) <- newTriggerEvent
   (eError, onError) <- newTriggerEvent
   (eClosed, onClosed) <- newTriggerEvent
 
+  ePostBuild <- getPostBuild
+
   isOpenRead <- liftIO . atomically $ newEmptyTMVar
-  performEvent_ $ ffor eOpen $
-    void . liftIO . atomically . tryPutTMVar isOpenRead
+  performEvent_ $ ffor ePostBuild $
+    const . void . liftIO . atomically . tryPutTMVar isOpenRead $ initSock
 
   isOpenWrite <- liftIO . atomically $ newEmptyTMVar
-  performEvent_ $ ffor eOpen $
-    void . liftIO . atomically . tryPutTMVar isOpenWrite
+  performEvent_ $ ffor ePostBuild $
+    const . void . liftIO . atomically . tryPutTMVar isOpenWrite $ initSock
 
   payloadQueue <- liftIO newTQueueIO
 
@@ -104,7 +111,7 @@ socket (SocketConfig mxRx eOpen eTx eClose) = mdo
   performEvent_ $ ffor eTx $
     liftIO . atomically . traverse_ (writeTQueue payloadQueue)
 
-  performEvent_ $ txLoop <$ eOpen
+  performEvent_ $ txLoop <$ ePostBuild
 
   let
     exHandlerRx :: IOException -> IO B.ByteString
@@ -145,9 +152,9 @@ socket (SocketConfig mxRx eOpen eTx eClose) = mdo
 
     startRxLoop = liftIO $ do
       mSock <- atomically $ tryReadTMVar isOpenRead
-      forM_ mSock $ \_ -> void . forkIO $ rxLoop (runGetIncremental (get :: Get b))
+      forM_ mSock $ \_ -> void . forkIO . rxLoop $ runGetIncremental (get :: Get b)
 
-  performEvent_ $ startRxLoop <$ eOpen
+  performEvent_ $ startRxLoop <$ ePostBuild
 
   let
     closeFn = liftIO $ do

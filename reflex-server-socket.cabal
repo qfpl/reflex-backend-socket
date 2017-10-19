@@ -21,12 +21,14 @@ library
                      , Reflex.Server.Socket.Binary
                      , Reflex.Server.Socket.Scratch.ByteString
                      , Reflex.Server.Socket.Scratch.Binary
+                     , Reflex.Server.Socket.Scratch.List
   -- other-modules:       
   -- other-extensions:    
   build-depends:       base >=4.9 && <4.10
                      , mtl
                      , containers
                      , stm
+                     , these
                      , bytestring
                      , binary
                      , network

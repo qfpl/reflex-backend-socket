@@ -9,9 +9,14 @@ import qualified Data.ByteString.Char8 as BC
 
 import Reflex
 
+import Data.Map (Map)
+import qualified Data.Map as Map
+
 import Reflex.Server.Socket
 import Reflex.Server.Socket.ByteString
 import Reflex.Basic.Host
+
+import Reflex.Server.Socket.Scratch.List
 
 connect1 :: IO ()
 connect1 = basicHost $ do
@@ -26,7 +31,6 @@ accept1 :: IO ()
 accept1 = basicHost $ do
   a <- accept $ AcceptConfig (Just "127.0.0.1") (Just "9000") 1 never
 
-  performEvent_ $ (liftIO . putStrLn $ "Listen connected") <$ _aListenSocket a
   performEvent_ $ (liftIO . putStrLn $ "Listen closed") <$ _aListenClosed a
   performEvent_ $ (liftIO . putStrLn $ "Connected") <$ _aAcceptSocket a
   performEvent_ $ liftIO . putStrLn <$> _aError a
@@ -34,35 +38,66 @@ accept1 = basicHost $ do
   pure ()
 
 connect2 :: IO ()
-connect2 = basicHost $ do
+connect2 = basicHost $ mdo
   c <- connect $ ConnectConfig (Just "127.0.0.1") (Just "9000")
 
   performEvent_ $ (liftIO . putStrLn $ "Connected") <$ _cSocket c
   performEvent_ $ liftIO . putStrLn <$> _cError c
 
+  let eConnect = _cSocket c
+  dCount <- count eConnect
+
+  dMap <- foldDyn ($) Map.empty .
+          mergeWith (.) $ [
+            Map.insert <$> current dCount <@> eConnect
+          , flip (foldr Map.delete) <$> eRemoves
+          ]
+
+  dmeRemoves <- list dMap $ \ds -> do
+    s <- sample . current $ ds
+    ePostBuild <- getPostBuild
+    let
+      eTx = ["Hi"] <$ ePostBuild
+      eClose = () <$ ePostBuild
+    so <- socket $ SocketConfig s 2048 eTx eClose
+    performEvent_ $ liftIO . BC.putStrLn <$> _soRecieve so
+    performEvent_ $ liftIO . putStrLn <$> _soError so
+    performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _soClosed so
+    pure $ () <$ _soClosed so
+
   let
-    eTx = ["Hi"] <$ _cSocket c
-    eClose = () <$ _cSocket c
-  s <- socket $ SocketConfig 2048 (_cSocket c) eTx eClose
-  performEvent_ $ liftIO . BC.putStrLn <$> _soRecieve s
-  performEvent_ $ liftIO . putStrLn <$> _soError s
-  performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _soClosed s
+    eRemoves = fmap Map.keys . switch . current . fmap mergeMap $ dmeRemoves
 
   pure ()
 
 accept2 :: IO ()
-accept2 = basicHost $ do
+accept2 = basicHost $ mdo
   a <- accept $ AcceptConfig (Just "127.0.0.1") (Just "9000") 1 never
 
-  performEvent_ $ (liftIO . putStrLn $ "Listen connected") <$ _aListenSocket a
   performEvent_ $ (liftIO . putStrLn $ "Listen closed") <$ _aListenClosed a
   performEvent_ $ (liftIO . putStrLn $ "Connected") <$ _aAcceptSocket a
   performEvent_ $ liftIO . putStrLn <$> _aError a
 
-  s <- socket $ SocketConfig 2048 (fst <$> _aAcceptSocket a) never never
-  performEvent_ $ liftIO . BC.putStrLn <$> _soRecieve s
-  performEvent_ $ liftIO . putStrLn <$> _soError s
-  performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _soClosed s
+  let eAccept = fst <$> _aAcceptSocket a
+  dCount <- count eAccept
+
+  dMap <- foldDyn ($) Map.empty .
+          mergeWith (.) $ [
+            Map.insert <$> current dCount <@> eAccept
+          , flip (foldr Map.delete) <$> eRemoves
+          ]
+
+  dmeRemoves <- list dMap $ \ds -> do
+    s <- sample . current $ ds
+    ePostBuild <- getPostBuild
+    so <- socket $ SocketConfig s 2048 never never
+    performEvent_ $ liftIO . BC.putStrLn <$> _soRecieve so
+    performEvent_ $ liftIO . putStrLn <$> _soError so
+    performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _soClosed so
+    pure $ () <$ _soClosed so
+
+  let
+    eRemoves = fmap Map.keys . switch . current . fmap mergeMap $ dmeRemoves
 
   pure ()
 
@@ -73,10 +108,26 @@ connect3 = basicHost $ mdo
   performEvent_ $ (liftIO . putStrLn $ "Connected") <$ _cSocket c
   performEvent_ $ liftIO . putStrLn <$> _cError c
 
-  s <- socket $ SocketConfig 2048 (_cSocket c) never (_soClosed s)
-  performEvent_ $ liftIO . BC.putStrLn <$> _soRecieve s
-  performEvent_ $ liftIO . putStrLn <$> _soError s
-  performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _soClosed s
+  let eConnect = _cSocket c
+  dCount <- count eConnect
+
+  dMap <- foldDyn ($) Map.empty .
+          mergeWith (.) $ [
+            Map.insert <$> current dCount <@> eConnect
+          , flip (foldr Map.delete) <$> eRemoves
+          ]
+
+  dmeRemoves <- list dMap $ \ds -> mdo
+    s <- sample . current $ ds
+    ePostBuild <- getPostBuild
+    so <- socket $ SocketConfig s 2048 never (_soClosed so)
+    performEvent_ $ liftIO . BC.putStrLn <$> _soRecieve so
+    performEvent_ $ liftIO . putStrLn <$> _soError so
+    performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _soClosed so
+    pure $ () <$ _soClosed so
+
+  let
+    eRemoves = fmap Map.keys . switch . current . fmap mergeMap $ dmeRemoves
 
   pure ()
 
@@ -84,18 +135,33 @@ accept3 :: IO ()
 accept3 = basicHost $ mdo
   a <- accept $ AcceptConfig (Just "127.0.0.1") (Just "9000") 1 never
 
-  performEvent_ $ (liftIO . putStrLn $ "Listen connected") <$ _aListenSocket a
   performEvent_ $ (liftIO . putStrLn $ "Listen closed") <$ _aListenClosed a
   performEvent_ $ (liftIO . putStrLn $ "Connected") <$ _aAcceptSocket a
   performEvent_ $ liftIO . putStrLn <$> _aError a
 
+  let eAccept = fst <$> _aAcceptSocket a
+  dCount <- count eAccept
+
+  dMap <- foldDyn ($) Map.empty .
+          mergeWith (.) $ [
+            Map.insert <$> current dCount <@> eAccept
+          , flip (foldr Map.delete) <$> eRemoves
+          ]
+
+  dmeRemoves <- list dMap $ \ds -> mdo
+    s <- sample . current $ ds
+    ePostBuild <- getPostBuild
+    let
+      eTx = ["Hi"] <$ ePostBuild
+      eClose = leftmost [ePostBuild, _soClosed so]
+    so <- socket $ SocketConfig s 2048 eTx eClose
+    performEvent_ $ liftIO . BC.putStrLn <$> _soRecieve so
+    performEvent_ $ liftIO . putStrLn <$> _soError so
+    performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _soClosed so
+    pure $ () <$ _soClosed so
+
   let
-    eTx = ["Hi"] <$ _aAcceptSocket a
-    eClose = leftmost [() <$ _aAcceptSocket a, _soClosed s]
-  s <- socket $ SocketConfig 2048 (fst <$> _aAcceptSocket a) eTx eClose
-  performEvent_ $ liftIO . BC.putStrLn <$> _soRecieve s
-  performEvent_ $ liftIO . putStrLn <$> _soError s
-  performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _soClosed s
+    eRemoves = fmap Map.keys . switch . current . fmap mergeMap $ dmeRemoves
 
   pure ()
 
@@ -106,13 +172,29 @@ connect4 = basicHost $ mdo
   performEvent_ $ (liftIO . putStrLn $ "Connected") <$ _cSocket c
   performEvent_ $ liftIO . putStrLn <$> _cError c
 
+  let eConnect = _cSocket c
+  dCount <- count eConnect
+
+  dMap <- foldDyn ($) Map.empty .
+          mergeWith (.) $ [
+            Map.insert <$> current dCount <@> eConnect
+          , flip (foldr Map.delete) <$> eRemoves
+          ]
+
+  dmeRemoves <- list dMap $ \ds -> mdo
+    s <- sample . current $ ds
+    ePostBuild <- getPostBuild
+    let
+      eTx = ["Hi"] <$ ePostBuild
+      eClose = leftmost [() <$ _soRecieve so, _soClosed so]
+    so <- socket $ SocketConfig s 2048 eTx eClose
+    performEvent_ $ liftIO . BC.putStrLn <$> _soRecieve so
+    performEvent_ $ liftIO . putStrLn <$> _soError so
+    performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _soClosed so
+    pure $ () <$ _soClosed so
+
   let
-    eTx = ["Hi"] <$ _cSocket c
-    eClose = leftmost [() <$ _soRecieve s, _soClosed s]
-  s <- socket $ SocketConfig 2048 (_cSocket c) eTx eClose
-  performEvent_ $ liftIO . BC.putStrLn <$> _soRecieve s
-  performEvent_ $ liftIO . putStrLn <$> _soError s
-  performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _soClosed s
+    eRemoves = fmap Map.keys . switch . current . fmap mergeMap $ dmeRemoves
 
   pure ()
 
@@ -120,16 +202,31 @@ accept4 :: IO ()
 accept4 = basicHost $ mdo
   a <- accept $ AcceptConfig (Just "127.0.0.1") (Just "9000") 1 never
 
-  performEvent_ $ (liftIO . putStrLn $ "Listen connected") <$ _aListenSocket a
   performEvent_ $ (liftIO . putStrLn $ "Listen closed") <$ _aListenClosed a
   performEvent_ $ (liftIO . putStrLn $ "Connected") <$ _aAcceptSocket a
   performEvent_ $ liftIO . putStrLn <$> _aError a
 
+  let eAccept = fst <$> _aAcceptSocket a
+  dCount <- count eAccept
+
+  dMap <- foldDyn ($) Map.empty .
+          mergeWith (.) $ [
+            Map.insert <$> current dCount <@> eAccept
+          , flip (foldr Map.delete) <$> eRemoves
+          ]
+
+  dmeRemoves <- list dMap $ \ds -> mdo
+    s <- sample . current $ ds
+    ePostBuild <- getPostBuild
+    let
+      eTx = ["Hello"] <$ _soRecieve so
+    so <- socket $ SocketConfig s 2048 eTx (_soClosed so)
+    performEvent_ $ liftIO . BC.putStrLn <$> _soRecieve so
+    performEvent_ $ liftIO . putStrLn <$> _soError so
+    performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _soClosed so
+    pure $ () <$ _soClosed so
+
   let
-    eTx = ["Hello"] <$ _soRecieve s
-  s <- socket $ SocketConfig 2048 (fst <$> _aAcceptSocket a) eTx (_soClosed s)
-  performEvent_ $ liftIO . BC.putStrLn <$> _soRecieve s
-  performEvent_ $ liftIO . putStrLn <$> _soError s
-  performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _soClosed s
+    eRemoves = fmap Map.keys . switch . current . fmap mergeMap $ dmeRemoves
 
   pure ()

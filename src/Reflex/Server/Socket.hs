@@ -71,9 +71,8 @@ data AcceptConfig t =
 
 data Accept t =
   Accept {
-    _aListenSocket :: Event t Socket
+    _aAcceptSocket :: Event t (Socket, SockAddr)
   , _aListenClosed :: Event t ()
-  , _aAcceptSocket :: Event t (Socket, SockAddr)
   , _aError        :: Event t String
   }
 
@@ -86,12 +85,10 @@ accept ::
   ) =>
   AcceptConfig t ->
   m (Accept t)
-accept (AcceptConfig mHost mPort listenQueue _) = do
-  (eListenSocket, onListenSocket) <- newTriggerEvent
+accept (AcceptConfig mHost mPort listenQueue eClose) = do
   (eAcceptSocket, onAcceptSocket) <- newTriggerEvent
-  (eError, onError)   <- newTriggerEvent
-
-  -- TODO add support for closing / detecting the close of the listen socket
+  (eClosed, onClosed) <- newTriggerEvent
+  (eError, onError) <- newTriggerEvent
 
   -- TODO go through and catch all of the relevant exceptions
   addrinfos <- liftIO $ getAddrInfo (Just (defaultHints {addrFlags = [AI_PASSIVE]})) mHost mPort
@@ -101,9 +98,11 @@ accept (AcceptConfig mHost mPort listenQueue _) = do
       sock <- socket (addrFamily h) Stream defaultProtocol
       bind sock (addrAddress h)
       listen sock listenQueue
-      onListenSocket sock
+      -- TODO kill this loop on close
+      -- TODO listen for exceptions and fire error / close events
       void . forkIO . forever $ do
         conn <- NS.accept sock
         onAcceptSocket conn
+     -- close the listening socket when close fires
 
-  pure $ Accept eListenSocket never eAcceptSocket eError
+  pure $ Accept eAcceptSocket eClosed eError

@@ -1,5 +1,5 @@
 { mkDerivation, base, binary, bytestring, containers, mtl, network
-, reflex, reflex-basic-host, stdenv, stm
+, reflex, reflex-basic-host, stdenv, stm, these
 }:
 mkDerivation {
   pname = "reflex-server-socket";
@@ -7,7 +7,7 @@ mkDerivation {
   src = ./.;
   libraryHaskellDepends = [
     base binary bytestring containers mtl network reflex
-    reflex-basic-host stm
+    reflex-basic-host stm these
   ];
   license = stdenv.lib.licenses.bsd3;
 }
