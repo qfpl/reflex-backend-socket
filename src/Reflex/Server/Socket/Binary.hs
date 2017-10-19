@@ -18,7 +18,7 @@ module Reflex.Server.Socket.Binary (
   ) where
 
 import Control.Concurrent (forkIO)
-import Control.Monad (unless, forever, void)
+import Control.Monad (unless, when, forever, void)
 import Data.Foldable (forM_, traverse_)
 import Data.Maybe (isJust)
 import Data.Proxy (Proxy)
@@ -74,44 +74,43 @@ socket (SocketConfig initSock mxRx eTx eClose) = mdo
   (eError, onError) <- newTriggerEvent
   (eClosed, onClosed) <- newTriggerEvent
 
-  ePostBuild <- getPostBuild
-
-  isOpenRead <- liftIO . atomically $ newEmptyTMVar
-  performEvent_ $ ffor ePostBuild $
-    const . void . liftIO . atomically . tryPutTMVar isOpenRead $ initSock
-
-  isOpenWrite <- liftIO . atomically $ newEmptyTMVar
-  performEvent_ $ ffor ePostBuild $
-    const . void . liftIO . atomically . tryPutTMVar isOpenWrite $ initSock
-
   payloadQueue <- liftIO newTQueueIO
+  isOpenRead <- liftIO . atomically $ newEmptyTMVar
+  isOpenWrite <- liftIO . atomically $ newEmptyTMVar
 
   let
-    exHandlerTx :: IOException -> IO ()
-    exHandlerTx e =
-      onError (displayException e)
+    start = liftIO $ do
+      atomically . tryPutTMVar isOpenRead $ initSock
+      atomically . tryPutTMVar isOpenWrite $ initSock
+      pure ()
 
-    sendFn bs = do
+  ePostBuild <- getPostBuild
+  performEvent_ $ start <$ ePostBuild
+
+
+  let
+    exHandlerTx :: IOException -> IO Bool
+    exHandlerTx e = do
       mSock <- atomically . tryReadTMVar $ isOpenWrite
-      case mSock of
-        Nothing -> pure False
-        Just sock ->
-          (sendAll sock (LB.toStrict . encode $ bs) >> pure True) `catch`
-          (\e -> exHandlerTx e >> pure False)
+      forM_ mSock $ \_ -> onError (displayException e)
+      pure False
 
-    txLoop = liftIO . void . forkIO . forever $ do
-      bs <- atomically $ do
-        pl     <- readTQueue payloadQueue
-        open   <- tryReadTMVar isOpenWrite
-        if isJust open then return pl else retry
-      success <- sendFn bs
-      unless success $
-        atomically $ unGetTQueue payloadQueue bs
+    txLoop = do
+      mSock <- atomically . tryReadTMVar $ isOpenWrite
+      forM_ mSock $ \sock -> do
+        bs <- atomically . readTQueue $ payloadQueue
+        success <-
+          (sendAll sock (LB.toStrict . encode $ bs) >> pure True) `catch` exHandlerTx
+        when success txLoop
 
-  performEvent_ $ ffor eTx $
-    liftIO . atomically . traverse_ (writeTQueue payloadQueue)
+    startTxLoop = liftIO $ do
+      mSock <- atomically $ tryReadTMVar isOpenWrite
+      forM_ mSock $ \_ -> void . forkIO $ txLoop
 
-  performEvent_ $ txLoop <$ ePostBuild
+  performEvent_ $ ffor eTx $ \payloads -> liftIO $ forM_ payloads $
+    atomically . writeTQueue payloadQueue
+
+  performEvent_ $ startTxLoop <$ ePostBuild
 
   let
     exHandlerRx :: IOException -> IO B.ByteString
@@ -157,12 +156,16 @@ socket (SocketConfig initSock mxRx eTx eClose) = mdo
   performEvent_ $ startRxLoop <$ ePostBuild
 
   let
+    exHandlerClose :: IOException -> IO ()
+    exHandlerClose =
+      onError . displayException
+
     closeFn = liftIO $ do
       mSock <- atomically . tryReadTMVar $ isOpenWrite
       forM_ mSock $ \sock -> do
         void . atomically . tryTakeTMVar $ isOpenWrite
         void . atomically . tryTakeTMVar $ isOpenRead
-        close sock
+        close sock `catch` exHandlerClose
 
   performEvent_ $ closeFn <$ eClose
 
