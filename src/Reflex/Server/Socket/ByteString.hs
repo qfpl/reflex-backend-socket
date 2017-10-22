@@ -139,6 +139,7 @@ socket (SocketConfig initSock mxRx eTx eClose) = mdo
         void . atomically . tryTakeTMVar $ isOpenWrite
         void . atomically . tryTakeTMVar $ isOpenRead
         close sock `catch` exHandlerClose
+        onClosed ()
 
   performEvent_ $ closeFn <$ eClose
 
