@@ -22,8 +22,6 @@ import Reflex.Server.Socket
 import Reflex.Server.Socket.Binary
 import Reflex.Basic.Host
 
-import Reflex.Server.Socket.Scratch.List
-
 data ClientMessage =
   Client1 String
   deriving (Eq, Ord, Show)

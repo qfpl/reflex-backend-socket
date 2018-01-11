@@ -16,8 +16,6 @@ import Reflex.Server.Socket
 import Reflex.Server.Socket.ByteString
 import Reflex.Basic.Host
 
-import Reflex.Server.Socket.Scratch.List
-
 connect1 :: IO ()
 connect1 = basicHost $ do
   c <- connect $ ConnectConfig (Just "127.0.0.1") (Just "9000")
@@ -59,6 +57,7 @@ connect2 = basicHost $ mdo
       eTx = ["Hi"] <$ _sOpen so
       eClose = () <$ _sOpen so
     so <- socket $ SocketConfig s 2048 eTx eClose
+
     performEvent_ $ liftIO . BC.putStrLn <$> _sRecieve so
     performEvent_ $ liftIO . putStrLn <$> _sError so
     performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _sClosed so
@@ -88,10 +87,13 @@ accept2 = basicHost $ mdo
 
   dmeRemoves <- list dMap $ \ds -> do
     s <- sample . current $ ds
+
     so <- socket $ SocketConfig s 2048 never never
+
     performEvent_ $ liftIO . BC.putStrLn <$> _sRecieve so
     performEvent_ $ liftIO . putStrLn <$> _sError so
     performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _sClosed so
+
     pure $ () <$ _sClosed so
 
   let

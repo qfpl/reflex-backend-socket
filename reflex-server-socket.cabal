@@ -23,17 +23,16 @@ library
                      , Reflex.Server.Socket.Binary
                      , Reflex.Server.Socket.Scratch.ByteString
                      , Reflex.Server.Socket.Scratch.Binary
-                     , Reflex.Server.Socket.Scratch.List
-  build-depends:       base >=4.9 && <4.10
-                     , mtl
-                     , lens
-                     , stm
-                     , bytestring
-                     , binary
-                     , network
-                     , reflex
-                     , these
-                     , containers
-                     , reflex-basic-host
+  build-depends:       base              >=4.9 && <4.10
+                     , binary            >= 0.8.3 && < 0.9
+                     , bytestring        >= 0.10.8 && < 0.11
+                     , containers        >= 0.5.7 && < 0.6
+                     , lens              >= 4.15.4 && < 4.16
+                     , mtl               >= 2.2.1 && < 2.3
+                     , network           >= 2.6.3 && < 2.7
+                     , reflex            >= 0.5 && < 0.6
+                     , stm               >= 2.4.4 && < 2.5
+                     , these             >= 0.7.3 && < 0.8
+                     , reflex-basic-host >= 0.1.0 && < 0.2
   hs-source-dirs:      src
   default-language:    Haskell2010

@@ -17,6 +17,7 @@ module Reflex.Server.Socket (
 
 import Control.Concurrent (forkIO)
 import Control.Monad (forever, void, forM_)
+import Data.Maybe (listToMaybe)
 
 import Control.Exception (IOException, catch, displayException)
 import Control.Monad.Trans (MonadIO(..))
@@ -129,9 +130,7 @@ accept (AcceptConfig mHost mPort listenQueue eClose) = do
     getAddr :: IO (Maybe AddrInfo)
     getAddr = do
       addrInfos <- getAddrInfo (Just (defaultHints {addrFlags = [AI_PASSIVE]})) mHost mPort `catch` exHandlerGetAddr
-      pure $ case addrInfos of
-        [] -> Nothing
-        h : _ -> Just h
+      pure $ listToMaybe addrInfos
 
     exHandlerSocket :: IOException -> IO (Maybe Socket)
     exHandlerSocket e = do
@@ -162,15 +161,11 @@ accept (AcceptConfig mHost mPort listenQueue eClose) = do
 
     start = liftIO $ do
       mAddrInfos <- getAddr
-      case mAddrInfos of
-        Nothing -> pure ()
-        Just h -> do
-          mSocket <- listenAddr h `catch` exHandlerSocket
-          case mSocket of
-            Nothing -> pure ()
-            Just sock -> do
-              void . atomically . tryPutTMVar isOpen $ sock
-              void . forkIO $ acceptLoop
+      forM_ mAddrInfos $ \h -> do
+        mSocket <- listenAddr h `catch` exHandlerSocket
+        forM_ mSocket $ \sock -> do
+          void . atomically . tryPutTMVar isOpen $ sock
+          void . forkIO $ acceptLoop
 
     closeSock = liftIO $ do
       mSock <- atomically . tryTakeTMVar $ isOpen
