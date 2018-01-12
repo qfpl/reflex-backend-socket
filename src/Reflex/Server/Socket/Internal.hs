@@ -3,14 +3,12 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleContexts #-}
 module Reflex.Server.Socket.Internal (
-    MkTx(..)
-  , MkRx(..)
-  , mkSocket
+    mkSocket
   ) where
 
 import Control.Concurrent (forkIO)
-import Control.Monad (unless, when, forever, void)
-import Data.Foldable (forM_, traverse_)
+import Control.Monad (when, void)
+import Data.Foldable (forM_)
 
 import Control.Exception (IOException, catch, displayException)
 
@@ -27,13 +25,9 @@ import Network.Socket.ByteString
 
 import Reflex
 
+import Reflex.Binary
+
 import Reflex.Server.Socket.Common
-
-data MkTx a where
-  MkTx :: (a -> B.ByteString) -> MkTx a
-
-data MkRx b where
-  MkRx :: c -> ((String -> IO ()) -> (b -> IO ()) -> B.ByteString -> c -> IO (Maybe c)) -> MkRx b
 
 mkSocket ::
   forall t m a b.
@@ -43,12 +37,12 @@ mkSocket ::
   , TriggerEvent t m
   , MonadIO (Performable m)
   , MonadIO m
+  , CanEncode a
+  , CanDecode b
   ) =>
-  MkTx a ->
-  MkRx b ->
   SocketConfig t a ->
   m (Socket t b)
-mkSocket (MkTx encodeTx) (MkRx initRx stepRx) (SocketConfig initSock mxRx eTx eClose) = mdo
+mkSocket (SocketConfig initSock mxRx eTx eClose) = mdo
   (eRx, onRx) <- newTriggerEvent
   (eOpen, onOpen) <- newTriggerEvent
   (eError, onError) <- newTriggerEvent
@@ -60,8 +54,8 @@ mkSocket (MkTx encodeTx) (MkRx initRx stepRx) (SocketConfig initSock mxRx eTx eC
 
   let
     start = liftIO $ do
-      atomically . tryPutTMVar isOpenRead $ initSock
-      atomically . tryPutTMVar isOpenWrite $ initSock
+      void . atomically . tryPutTMVar isOpenRead $ initSock
+      void . atomically . tryPutTMVar isOpenWrite $ initSock
       onOpen ()
       pure ()
 
@@ -80,7 +74,7 @@ mkSocket (MkTx encodeTx) (MkRx initRx stepRx) (SocketConfig initSock mxRx eTx eC
       forM_ mSock $ \sock -> do
         bs <- atomically . readTQueue $ payloadQueue
         success <-
-          (sendAll sock (encodeTx bs) >> pure True) `catch` exHandlerTx
+          (sendAll sock (doEncode bs) >> pure True) `catch` exHandlerTx
         when success txLoop
 
     startTxLoop = liftIO $ do
@@ -111,14 +105,16 @@ mkSocket (MkTx encodeTx) (MkRx initRx stepRx) (SocketConfig initSock mxRx eTx eC
         if B.null bs
         then shutdownRx
         else do
-          mDecoder <- stepRx onError onRx bs decoder
-          case mDecoder of
-            Nothing -> shutdownRx
-            Just decoder' -> rxLoop decoder'
+          case decoder of
+            IncrementalDecoder c stepRx -> do
+              mDecoder <- stepRx onError onRx bs c
+              case mDecoder of
+                Nothing -> shutdownRx
+                Just c' -> rxLoop $ IncrementalDecoder c' stepRx
 
     startRxLoop = liftIO $ do
       mSock <- atomically $ tryReadTMVar isOpenRead
-      forM_ mSock $ \_ -> void . forkIO . rxLoop $ initRx
+      forM_ mSock $ const . void . forkIO . rxLoop $ getDecoder
 
   performEvent_ $ startRxLoop <$ ePostBuild
 

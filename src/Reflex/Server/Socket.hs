@@ -1,179 +1,164 @@
 {-|
-Copyright   : (c) 2007, Commonwealth Scientific and Industrial Research Organisation
+Copyright   : (c) 2018, Commonwealth Scientific and Industrial Research Organisation
 License     : BSD3
 Maintainer  : dave.laing.80@gmail.com
 Stability   : experimental
 Portability : non-portable
 -}
-{-# LANGUAGE FlexibleContexts #-}
+{-#LANGUAGE ScopedTypeVariables #-}
+{-#LANGUAGE RecursiveDo #-}
+{-#LANGUAGE FlexibleContexts #-}
 module Reflex.Server.Socket (
-    ConnectConfig(..)
-  , Connect(..)
-  , connect
-  , AcceptConfig(..)
-  , Accept(..)
-  , accept
+    SocketConfig(..)
+  , Socket(..)
+  , socket
+  , module Reflex.Server.Socket.Connect
+  , module Reflex.Server.Socket.Accept
   ) where
 
 import Control.Concurrent (forkIO)
-import Control.Monad (forever, void, forM_)
-import Data.Maybe (listToMaybe)
+import Control.Monad (when, void)
+import Data.Foldable (forM_)
 
 import Control.Exception (IOException, catch, displayException)
+
 import Control.Monad.Trans (MonadIO(..))
 
 import Control.Monad.STM
 import Control.Concurrent.STM.TMVar
+import Control.Concurrent.STM.TQueue
 
-import Network.Socket hiding (connect, accept)
+import qualified Data.ByteString as B
+
+import Network.Socket hiding (Socket, socket, mkSocket, send, sendTo, recv, recvFrom)
 import qualified Network.Socket as NS
+import Network.Socket.ByteString
 
 import Reflex
 
-data ConnectConfig =
-  ConnectConfig {
-    _ccHostname :: Maybe String
-  , _ccPort     :: Maybe String
+import Reflex.Binary
+
+import Reflex.Server.Socket.Connect
+import Reflex.Server.Socket.Accept
+
+data SocketConfig t a =
+  SocketConfig {
+    _scInitSocket :: NS.Socket
+  , _scMaxRx      :: Int
+  , _scSend       :: Event t [a]
+  , _scClose      :: Event t ()
   }
 
-data Connect t =
-  Connect {
-    _cSocket :: Event t Socket
-  , _cError  :: Event t String
+data Socket t b =
+  Socket {
+    _sRecieve :: Event t b
+  , _sOpen    :: Event t ()
+  , _sError   :: Event t String
+  , _sClosed  :: Event t ()
   }
 
-connect ::
+socket ::
+  forall t m a b.
   ( Reflex t
   , PerformEvent t m
-  , TriggerEvent t m
   , PostBuild t m
+  , TriggerEvent t m
   , MonadIO (Performable m)
   , MonadIO m
+  , CanEncode a
+  , CanDecode b
   ) =>
-  ConnectConfig ->
-  m (Connect t)
-connect (ConnectConfig mHost mPort) = do
-  (eSocket, onSocket) <- newTriggerEvent
-  (eError, onError)   <- newTriggerEvent
+  SocketConfig t a ->
+  m (Socket t b)
+socket (SocketConfig initSock mxRx eTx eClose) = mdo
+  (eRx, onRx) <- newTriggerEvent
+  (eOpen, onOpen) <- newTriggerEvent
+  (eError, onError) <- newTriggerEvent
+  (eClosed, onClosed) <- newTriggerEvent
+
+  payloadQueue <- liftIO newTQueueIO
+  isOpenRead <- liftIO . atomically $ newEmptyTMVar
+  isOpenWrite <- liftIO . atomically $ newEmptyTMVar
 
   let
-    exHandlerGetAddr :: IOException -> IO [AddrInfo]
-    exHandlerGetAddr e = do
-      onError . displayException $ e
-      pure []
+    start = liftIO $ do
+      void . atomically . tryPutTMVar isOpenRead $ initSock
+      void . atomically . tryPutTMVar isOpenWrite $ initSock
+      onOpen ()
+      pure ()
 
-    getAddr :: IO (Maybe AddrInfo)
-    getAddr = do
-      addrInfos <- getAddrInfo Nothing mHost mPort `catch` exHandlerGetAddr
-      pure $ case addrInfos of
-        [] -> Nothing
-        h : _ -> Just h
+  ePostBuild <- getPostBuild
+  performEvent_ $ start <$ ePostBuild
 
-    exHandler :: IOException -> IO ()
-    exHandler =
+  let
+    exHandlerTx :: IOException -> IO Bool
+    exHandlerTx e = do
+      mSock <- atomically . tryReadTMVar $ isOpenWrite
+      forM_ mSock $ \_ -> onError (displayException e)
+      pure False
+
+    txLoop = do
+      mSock <- atomically . tryReadTMVar $ isOpenWrite
+      forM_ mSock $ \sock -> do
+        bs <- atomically . readTQueue $ payloadQueue
+        success <-
+          (sendAll sock (doEncode bs) >> pure True) `catch` exHandlerTx
+        when success txLoop
+
+    startTxLoop = liftIO $ do
+      mSock <- atomically $ tryReadTMVar isOpenWrite
+      forM_ mSock $ \_ -> void . forkIO $ txLoop
+
+  performEvent_ $ ffor eTx $ \payloads -> liftIO $ forM_ payloads $
+    atomically . writeTQueue payloadQueue
+
+  performEvent_ $ startTxLoop <$ ePostBuild
+
+  let
+    exHandlerRx :: IOException -> IO B.ByteString
+    exHandlerRx e = do
+      mSock <- atomically . tryReadTMVar $ isOpenRead
+      forM_ mSock $ \_ -> onError (displayException e)
+      pure B.empty
+
+    shutdownRx = do
+      void . atomically $ tryTakeTMVar isOpenRead
+      onClosed ()
+
+    rxLoop decoder = do
+      mSock <- atomically $ tryReadTMVar isOpenRead
+      forM_ mSock $ \sock -> do
+        bs <- recv sock mxRx `catch` exHandlerRx
+
+        if B.null bs
+        then shutdownRx
+        else do
+          case decoder of
+            IncrementalDecoder c stepRx -> do
+              mDecoder <- stepRx onError onRx bs c
+              case mDecoder of
+                Nothing -> shutdownRx
+                Just c' -> rxLoop $ IncrementalDecoder c' stepRx
+
+    startRxLoop = liftIO $ do
+      mSock <- atomically $ tryReadTMVar isOpenRead
+      forM_ mSock $ const . void . forkIO . rxLoop $ getDecoder
+
+  performEvent_ $ startRxLoop <$ ePostBuild
+
+  let
+    exHandlerClose :: IOException -> IO ()
+    exHandlerClose =
       onError . displayException
 
-    connectAddr :: AddrInfo -> IO ()
-    connectAddr h = do
-      sock <- socket (addrFamily h) Stream defaultProtocol
-      NS.connect sock (addrAddress h)
-      onSocket sock
+    closeFn = liftIO $ do
+      mSock <- atomically . tryReadTMVar $ isOpenWrite
+      forM_ mSock $ \sock -> do
+        void . atomically . tryTakeTMVar $ isOpenWrite
+        void . atomically . tryTakeTMVar $ isOpenRead
+        close sock `catch` exHandlerClose
+        onClosed ()
 
-    start = liftIO $ do
-      mAddrInfo <- getAddr
-      forM_ mAddrInfo $ \h ->
-        connectAddr h `catch` exHandler
+  performEvent_ $ closeFn <$ eClose
 
-  ePostBuild <- getPostBuild
-  performEvent_ $ start <$ ePostBuild
-
-  pure $ Connect eSocket eError
-
-data AcceptConfig t =
-  AcceptConfig {
-    _acHostname    :: Maybe String
-  , _acPort        :: Maybe String
-  , _acListenQueue :: Int
-  , _acClose       :: Event t ()
-  }
-
-data Accept t =
-  Accept {
-    _aAcceptSocket :: Event t (Socket, SockAddr)
-  , _aListenClosed :: Event t ()
-  , _aError        :: Event t String
-  }
-
-accept ::
-  ( Reflex t
-  , PerformEvent t m
-  , PostBuild t m
-  , TriggerEvent t m
-  , MonadIO (Performable m)
-  , MonadIO m
-  ) =>
-  AcceptConfig t ->
-  m (Accept t)
-accept (AcceptConfig mHost mPort listenQueue eClose) = do
-  (eAcceptSocket, onAcceptSocket) <- newTriggerEvent
-  (eClosed, onClosed) <- newTriggerEvent
-  (eError, onError) <- newTriggerEvent
-
-  isOpen <- liftIO . atomically $ newEmptyTMVar
-
-  let
-    exHandlerGetAddr :: IOException -> IO [AddrInfo]
-    exHandlerGetAddr e = do
-      onError . displayException $ e
-      pure []
-
-    getAddr :: IO (Maybe AddrInfo)
-    getAddr = do
-      addrInfos <- getAddrInfo (Just (defaultHints {addrFlags = [AI_PASSIVE]})) mHost mPort `catch` exHandlerGetAddr
-      pure $ listToMaybe addrInfos
-
-    exHandlerSocket :: IOException -> IO (Maybe Socket)
-    exHandlerSocket e = do
-      onError . displayException $ e
-      pure Nothing
-
-    listenAddr :: AddrInfo -> IO (Maybe Socket)
-    listenAddr h = do
-      sock <- socket (addrFamily h) Stream defaultProtocol
-      bind sock (addrAddress h)
-      listen sock listenQueue
-      pure $ Just sock
-
-    exHandlerAccept :: IOException -> IO (Maybe (Socket, SockAddr))
-    exHandlerAccept e = do
-      void . atomically . tryTakeTMVar $ isOpen
-      onError . displayException $ e
-      pure Nothing
-
-    acceptLoop :: IO ()
-    acceptLoop = do
-      mSock <- atomically . tryReadTMVar $ isOpen
-      forM_ mSock $ \sock ->  do
-        mConn <- (Just <$> NS.accept sock) `catch` exHandlerAccept
-        forM_ mConn $ \conn -> do
-          onAcceptSocket conn
-          acceptLoop
-
-    start = liftIO $ do
-      mAddrInfos <- getAddr
-      forM_ mAddrInfos $ \h -> do
-        mSocket <- listenAddr h `catch` exHandlerSocket
-        forM_ mSocket $ \sock -> do
-          void . atomically . tryPutTMVar isOpen $ sock
-          void . forkIO $ acceptLoop
-
-    closeSock = liftIO $ do
-      mSock <- atomically . tryTakeTMVar $ isOpen
-      forM_ mSock close
-
-  ePostBuild <- getPostBuild
-  performEvent_ $ start <$ ePostBuild
-
-  performEvent_ $ ffor eClose $ const closeSock
-
-  pure $ Accept eAcceptSocket eClosed eError
+  pure $ Socket eRx eOpen eError eClosed

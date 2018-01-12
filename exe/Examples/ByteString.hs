@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RecursiveDo #-}
-module Reflex.Server.Socket.Scratch.ByteString where
+module Examples.ByteString where
 
 import Control.Monad.Trans (liftIO)
 
@@ -13,7 +14,6 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 
 import Reflex.Server.Socket
-import Reflex.Server.Socket.ByteString
 import Reflex.Basic.Host
 
 connect1 :: IO ()
@@ -54,7 +54,7 @@ connect2 = basicHost $ mdo
   dmeRemoves <- list dMap $ \ds -> mdo
     s <- sample . current $ ds
     let
-      eTx = ["Hi"] <$ _sOpen so
+      eTx = ["Hi" :: B.ByteString] <$ _sOpen so
       eClose = () <$ _sOpen so
     so <- socket $ SocketConfig s 2048 eTx eClose
 
@@ -88,7 +88,7 @@ accept2 = basicHost $ mdo
   dmeRemoves <- list dMap $ \ds -> do
     s <- sample . current $ ds
 
-    so <- socket $ SocketConfig s 2048 never never
+    so <- socket $ SocketConfig s 2048 (([] :: [B.ByteString]) <$ never) never
 
     performEvent_ $ liftIO . BC.putStrLn <$> _sRecieve so
     performEvent_ $ liftIO . putStrLn <$> _sError so
@@ -119,7 +119,7 @@ connect3 = basicHost $ mdo
 
   dmeRemoves <- list dMap $ \ds -> mdo
     s <- sample . current $ ds
-    so <- socket $ SocketConfig s 2048 never (_sClosed so)
+    so <- socket $ SocketConfig s 2048 (([] :: [B.ByteString]) <$ never) (_sClosed so)
     performEvent_ $ liftIO . BC.putStrLn <$> _sRecieve so
     performEvent_ $ liftIO . putStrLn <$> _sError so
     performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _sClosed so
@@ -150,7 +150,7 @@ accept3 = basicHost $ mdo
   dmeRemoves <- list dMap $ \ds -> mdo
     s <- sample . current $ ds
     let
-      eTx = ["Hi"] <$ _sOpen so
+      eTx = ["Hi" :: B.ByteString] <$ _sOpen so
       eClose = leftmost [_sOpen so, _sClosed so]
     so <- socket $ SocketConfig s 2048 eTx eClose
     performEvent_ $ liftIO . BC.putStrLn <$> _sRecieve so
@@ -182,7 +182,7 @@ connect4 = basicHost $ mdo
   dmeRemoves <- list dMap $ \ds -> mdo
     s <- sample . current $ ds
     let
-      eTx = ["Hi"] <$ _sOpen so
+      eTx = ["Hi" :: B.ByteString] <$ _sOpen so
       eClose = leftmost [() <$ _sRecieve so, _sClosed so]
     so <- socket $ SocketConfig s 2048 eTx eClose
     performEvent_ $ liftIO . BC.putStrLn <$> _sRecieve so
@@ -215,7 +215,7 @@ accept4 = basicHost $ mdo
   dmeRemoves <- list dMap $ \ds -> mdo
     s <- sample . current $ ds
     let
-      eTx = ["Hello"] <$ _sRecieve so
+      eTx = ["Hello" :: B.ByteString] <$ _sRecieve so
     so <- socket $ SocketConfig s 2048 eTx (_sClosed so)
     performEvent_ $ liftIO . BC.putStrLn <$> _sRecieve so
     performEvent_ $ liftIO . putStrLn <$> _sError so

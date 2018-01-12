@@ -3,28 +3,27 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
-module Reflex.Server.Socket.Scratch.Binary where
+module Examples.Binary where
 
 import Control.Monad (void)
 import Control.Monad.Trans (liftIO)
 
-import qualified Data.ByteString as B
-import qualified Data.ByteString.Char8 as BC
-
 import Data.Binary
 
-import Data.Map (Map)
 import qualified Data.Map as Map
 
 import Reflex
 
+import Reflex.Binary
 import Reflex.Server.Socket
-import Reflex.Server.Socket.Binary
 import Reflex.Basic.Host
 
 data ClientMessage =
   Client1 String
   deriving (Eq, Ord, Show)
+
+instance CanEncode ClientMessage
+instance CanDecode ClientMessage
 
 instance Binary ClientMessage where
   put im =
@@ -39,6 +38,9 @@ instance Binary ClientMessage where
 data ServerMessage =
   Server1 String
   deriving (Eq, Ord, Show)
+
+instance CanEncode ServerMessage
+instance CanDecode ServerMessage
 
 instance Binary ServerMessage where
   put om =

@@ -17,12 +17,8 @@ cabal-version:       >=1.10
 
 library
   exposed-modules:     Reflex.Server.Socket
-                     , Reflex.Server.Socket.Common
-                     , Reflex.Server.Socket.Internal
-                     , Reflex.Server.Socket.ByteString
-                     , Reflex.Server.Socket.Binary
-                     , Reflex.Server.Socket.Scratch.ByteString
-                     , Reflex.Server.Socket.Scratch.Binary
+                     , Reflex.Server.Socket.Connect
+                     , Reflex.Server.Socket.Accept
   build-depends:       base              >=4.9 && <4.10
                      , binary            >= 0.8.3 && < 0.9
                      , bytestring        >= 0.10.8 && < 0.11
@@ -34,5 +30,7 @@ library
                      , stm               >= 2.4.4 && < 2.5
                      , these             >= 0.7.3 && < 0.8
                      , reflex-basic-host >= 0.1.0 && < 0.2
+                     , reflex-binary     >= 0.1.0 && < 0.2
   hs-source-dirs:      src
+  ghc-options:         -Wall
   default-language:    Haskell2010
