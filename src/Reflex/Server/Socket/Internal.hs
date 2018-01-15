@@ -104,13 +104,7 @@ mkSocket (SocketConfig initSock mxRx eTx eClose) = mdo
 
         if B.null bs
         then shutdownRx
-        else do
-          case decoder of
-            IncrementalDecoder c stepRx -> do
-              mDecoder <- stepRx onError onRx bs c
-              case mDecoder of
-                Nothing -> shutdownRx
-                Just c' -> rxLoop $ IncrementalDecoder c' stepRx
+        else runIncrementalDecoder onError onRx shurownRx rxLoopdecoder bs
 
     startRxLoop = liftIO $ do
       mSock <- atomically $ tryReadTMVar isOpenRead

@@ -22,9 +22,6 @@ data ClientMessage =
   Client1 String
   deriving (Eq, Ord, Show)
 
-instance CanEncode ClientMessage
-instance CanDecode ClientMessage
-
 instance Binary ClientMessage where
   put im =
     case im of
@@ -38,9 +35,6 @@ instance Binary ClientMessage where
 data ServerMessage =
   Server1 String
   deriving (Eq, Ord, Show)
-
-instance CanEncode ServerMessage
-instance CanDecode ServerMessage
 
 instance Binary ServerMessage where
   put om =

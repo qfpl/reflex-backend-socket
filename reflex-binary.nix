@@ -5,8 +5,8 @@ let
     reflex-binary = initialNixpkgs.pkgs.fetchFromGitHub {
       owner = "dalaing";
       repo = "reflex-binary";
-      rev = "720de01a43e0ac3a6a2dd50fc44a879bc64b644e";
-      sha256 = "0y5iia2y1pxahk85sjj7zn096d85q7klnwpw3l56map2zgpf5dq0";
+      rev = "5f812d8aab0e7559d8e331a21865e81f70b1c67e";
+      sha256 = "14n0w04krdrv4qixp783zgp7sz1bsmjsr2p0hcm85hsi93ayl0gj";
     };
   };
 in
