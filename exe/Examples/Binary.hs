@@ -16,7 +16,7 @@ import Reflex
 
 import Reflex.Binary
 import Reflex.Server.Socket
-import Reflex.Basic.Host
+import Reflex.Host.Basic
 
 data ClientMessage =
   Client1 String
@@ -53,16 +53,19 @@ instance CanEncode ServerMessage
 instance CanDecode ServerMessage
 
 connect1 :: IO ()
-connect1 = basicHost $ do
+connect1 = basicHostWithQuit $ do
   c <- connect $ ConnectConfig (Just "127.0.0.1") (Just "9000")
 
   performEvent_ $ (liftIO . putStrLn $ "Connected") <$ _cSocket c
   performEvent_ $ liftIO . putStrLn <$> _cError c
 
-  pure ()
+  let 
+    eQuit = leftmost [void (_cSocket c), void (_cError c)]
+
+  pure ((), eQuit)
 
 accept1 :: IO ()
-accept1 = basicHost $ do
+accept1 = basicHostForever $ do
   a <- accept $ AcceptConfig (Just "127.0.0.1") (Just "9000") 1 never
 
   performEvent_ $ (liftIO . putStrLn $ "Listen closed") <$ _aListenClosed a
@@ -71,7 +74,10 @@ accept1 = basicHost $ do
 
   pure ()
 
-connect2' :: forall t m. BasicGuest t m ()
+connect2 :: IO ()
+connect2 = basicHostWithQuit connect2'
+
+connect2' :: forall t m. BasicGuest t m ((), Event t ())
 connect2' = mdo
   c <- connect $ ConnectConfig (Just "127.0.0.1") (Just "9000")
 
@@ -79,7 +85,7 @@ connect2' = mdo
   performEvent_ $ liftIO . putStrLn <$> _cError c
 
   let eConnect = _cSocket c
-  dCount <- count eConnect
+  dCount :: Dynamic t Int <- count eConnect
 
   dMap <- foldDyn ($) Map.empty .
           mergeWith (.) $ [
@@ -101,11 +107,12 @@ connect2' = mdo
 
   let
     eRemoves = fmap Map.keys . switch . current . fmap mergeMap $ dmeRemoves
+    eQuit = void . ffilter (not . null) $ eRemoves
 
-  pure ()
+  pure ((), eQuit)
 
-connect2 :: IO ()
-connect2 = basicHost connect2'
+accept2 :: IO ()
+accept2 = basicHostForever accept2'
 
 accept2' :: forall t m. BasicGuest t m ()
 accept2' = mdo
@@ -116,7 +123,7 @@ accept2' = mdo
   performEvent_ $ liftIO . putStrLn <$> _aError a
 
   let eAccept = fst <$> _aAcceptSocket a
-  dCount <- count eAccept
+  dCount :: Dynamic t Int <- count eAccept
 
   dMap <- foldDyn ($) Map.empty .
           mergeWith (.) $ [
@@ -139,10 +146,10 @@ accept2' = mdo
 
   pure ()
 
-accept2 :: IO ()
-accept2 = basicHost accept2'
+connect3 :: IO ()
+connect3 = basicHostWithQuit connect3'
 
-connect3' :: forall t m. BasicGuest t m ()
+connect3' :: forall t m. BasicGuest t m ((), Event t ())
 connect3' = mdo
   c <- connect $ ConnectConfig (Just "127.0.0.1") (Just "9000")
 
@@ -150,7 +157,7 @@ connect3' = mdo
   performEvent_ $ liftIO . putStrLn <$> _cError c
 
   let eConnect = _cSocket c
-  dCount <- count eConnect
+  dCount :: Dynamic t Int <- count eConnect
 
   dMap <- foldDyn ($) Map.empty .
           mergeWith (.) $ [
@@ -161,7 +168,7 @@ connect3' = mdo
   dmeRemoves <- list dMap $ \ds -> mdo
     s <- sample . current $ ds
     let
-      sc = SocketConfig s 2048 never (_sOpen so)
+      sc = SocketConfig s 2048 never (void $ _sRecieve so)
     so :: Socket t ServerMessage <- socket (sc :: SocketConfig t ClientMessage)
     performEvent_ $ liftIO . print <$> _sRecieve so
     performEvent_ $ liftIO . putStrLn <$> _sError so
@@ -170,11 +177,12 @@ connect3' = mdo
 
   let
     eRemoves = fmap Map.keys . switch . current . fmap mergeMap $ dmeRemoves
+    eQuit = void . ffilter (not . null) $ eRemoves
 
-  pure ()
+  pure ((), eQuit)
 
-connect3 :: IO ()
-connect3 = basicHost connect3'
+accept3 :: IO ()
+accept3 = basicHostForever accept3'
 
 accept3' :: forall t m. BasicGuest t m ()
 accept3' = mdo
@@ -185,7 +193,7 @@ accept3' = mdo
   performEvent_ $ liftIO . putStrLn <$> _aError a
 
   let eAccept = fst <$> _aAcceptSocket a
-  dCount <- count eAccept
+  dCount :: Dynamic t Int <- count eAccept
 
   dMap <- foldDyn ($) Map.empty .
           mergeWith (.) $ [
@@ -210,18 +218,18 @@ accept3' = mdo
 
   pure ()
 
-accept3 :: IO ()
-accept3 = basicHost accept3'
-
 connect4 :: IO ()
-connect4 = basicHost $ mdo
+connect4 = basicHostWithQuit connect4'
+
+connect4' :: forall t m. BasicGuest t m ((), Event t ())
+connect4' = mdo
   c <- connect $ ConnectConfig (Just "127.0.0.1") (Just "9000")
 
   performEvent_ $ (liftIO . putStrLn $ "Connected") <$ _cSocket c
   performEvent_ $ liftIO . putStrLn <$> _cError c
 
   let eConnect = _cSocket c
-  dCount <- count eConnect
+  dCount :: Dynamic t Int <- count eConnect
 
   dMap <- foldDyn ($) Map.empty .
           mergeWith (.) $ [
@@ -236,7 +244,7 @@ connect4 = basicHost $ mdo
       eClose = leftmost [void . ffilter id . updated $ dRxDone, _sClosed so]
       sc = SocketConfig s 2048 eTx eClose
     so :: Socket t ServerMessage <- socket sc
-    dRxCount <- count $ _sRecieve so
+    dRxCount :: Dynamic t Int <- count $ _sRecieve so
     let dRxDone = (>= 2) <$> dRxCount
     performEvent_ $ liftIO . print <$> _sRecieve so
     performEvent_ $ liftIO . putStrLn <$> _sError so
@@ -245,11 +253,15 @@ connect4 = basicHost $ mdo
 
   let
     eRemoves = fmap Map.keys . switch . current . fmap mergeMap $ dmeRemoves
+    eQuit = void . ffilter (not . null) $ eRemoves
 
-  pure ()
+  pure ((), eQuit)
 
 accept4 :: IO ()
-accept4 = basicHost $ mdo
+accept4 = basicHostForever accept4'
+
+accept4' :: forall t m. BasicGuest t m ()
+accept4' = mdo
   a <- accept $ AcceptConfig (Just "127.0.0.1") (Just "9000") 1 never
 
   performEvent_ $ (liftIO . putStrLn $ "Listen closed") <$ _aListenClosed a
@@ -257,7 +269,7 @@ accept4 = basicHost $ mdo
   performEvent_ $ liftIO . putStrLn <$> _aError a
 
   let eAccept = fst <$> _aAcceptSocket a
-  dCount <- count eAccept
+  dCount :: Dynamic t Int <- count eAccept
 
   dMap <- foldDyn ($) Map.empty .
           mergeWith (.) $ [
@@ -267,7 +279,6 @@ accept4 = basicHost $ mdo
 
   dmeRemoves <- list dMap $ \ds -> mdo
     s <- sample . current $ ds
-    ePostBuild <- getPostBuild
     let
       eTx = [Server1 "Hello"] <$ _sRecieve so
       sc = SocketConfig s 2048 eTx (_sClosed so)

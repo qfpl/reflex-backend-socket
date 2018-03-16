@@ -49,6 +49,7 @@ mkSocket (SocketConfig initSock mxRx eTx eClose) = mdo
   (eClosed, onClosed) <- newTriggerEvent
 
   payloadQueue <- liftIO newTQueueIO
+  closeQueue <- liftIO . atomically $ newEmptyTMVar
   isOpenRead <- liftIO . atomically $ newEmptyTMVar
   isOpenWrite <- liftIO . atomically $ newEmptyTMVar
 
@@ -63,6 +64,10 @@ mkSocket (SocketConfig initSock mxRx eTx eClose) = mdo
   performEvent_ $ start <$ ePostBuild
 
   let
+    exHandlerClose :: IOException -> IO ()
+    exHandlerClose =
+      onError . displayException
+
     exHandlerTx :: IOException -> IO Bool
     exHandlerTx e = do
       mSock <- atomically . tryReadTMVar $ isOpenWrite
@@ -70,12 +75,33 @@ mkSocket (SocketConfig initSock mxRx eTx eClose) = mdo
       pure False
 
     txLoop = do
-      mSock <- atomically . tryReadTMVar $ isOpenWrite
-      forM_ mSock $ \sock -> do
-        bs <- atomically . readTQueue $ payloadQueue
-        success <-
-          (sendAll sock (doEncode bs) >> pure True) `catch` exHandlerTx
-        when success txLoop
+      let
+        stmTx = do
+          mSock <- tryReadTMVar isOpenWrite
+          case mSock of
+            Nothing -> pure (Left Nothing)
+            Just sock -> do
+              bs <- readTQueue payloadQueue
+              pure $ Right (sock, bs)
+        stmClose = do
+          mSock <- tryReadTMVar isOpenWrite
+          case mSock of
+            Nothing -> pure (Left Nothing)
+            Just sock -> do
+              _ <- takeTMVar closeQueue
+              pure (Left (Just sock))
+      e <- atomically $ stmTx `orElse` stmClose
+      case e of
+        Right (sock, bs) -> do
+          success <- (sendAll sock (doEncode bs) >> pure True) `catch` exHandlerTx
+          when success txLoop
+        Left (Just sock) -> do
+          void . atomically . tryTakeTMVar $ isOpenWrite
+          void . atomically . tryTakeTMVar $ isOpenRead
+          close sock `catch` exHandlerClose
+          onClosed ()
+        Left Nothing ->
+          txLoop
 
     startTxLoop = liftIO $ do
       mSock <- atomically $ tryReadTMVar isOpenWrite
@@ -83,6 +109,9 @@ mkSocket (SocketConfig initSock mxRx eTx eClose) = mdo
 
   performEvent_ $ ffor eTx $ \payloads -> liftIO $ forM_ payloads $
     atomically . writeTQueue payloadQueue
+
+  performEvent_ $ ffor eClose $ \_ ->
+    liftIO . atomically . putTMVar closeQueue $ ()
 
   performEvent_ $ startTxLoop <$ ePostBuild
 
@@ -104,27 +133,12 @@ mkSocket (SocketConfig initSock mxRx eTx eClose) = mdo
 
         if B.null bs
         then shutdownRx
-        else runIncrementalDecoder onError onRx shurownRx rxLoopdecoder bs
+        else runIncrementalDecoder onError onRx (const shutdownRx) rxLoop decoder bs
 
     startRxLoop = liftIO $ do
       mSock <- atomically $ tryReadTMVar isOpenRead
       forM_ mSock $ const . void . forkIO . rxLoop $ getDecoder
 
   performEvent_ $ startRxLoop <$ ePostBuild
-
-  let
-    exHandlerClose :: IOException -> IO ()
-    exHandlerClose =
-      onError . displayException
-
-    closeFn = liftIO $ do
-      mSock <- atomically . tryReadTMVar $ isOpenWrite
-      forM_ mSock $ \sock -> do
-        void . atomically . tryTakeTMVar $ isOpenWrite
-        void . atomically . tryTakeTMVar $ isOpenRead
-        close sock `catch` exHandlerClose
-        onClosed ()
-
-  performEvent_ $ closeFn <$ eClose
 
   pure $ Socket eRx eOpen eError eClosed

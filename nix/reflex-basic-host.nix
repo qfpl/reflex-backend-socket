@@ -1,12 +1,12 @@
 let  
   initialNixpkgs = import <nixpkgs> {};
 
-  sources = {
+  sources = rec {
+    reflex-basic-host-info-pinned = initialNixpkgs.pkgs.lib.importJSON ./reflex-basic-host.json;
     reflex-basic-host = initialNixpkgs.pkgs.fetchFromGitHub {
       owner = "dalaing";
       repo = "reflex-basic-host";
-      rev = "a06461166895c680153c44de757330c3102ab6d5";
-      sha256 = "05a5fc96r1gc8l2q0mnw4xz0lvg7hzdw7i5ssrfxrcgikngmajyn";
+      inherit (reflex-basic-host-info-pinned) rev sha256;
     };
   };
 in
