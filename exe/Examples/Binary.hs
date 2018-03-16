@@ -205,7 +205,8 @@ accept3' = mdo
     s <- sample . current $ ds
     let
       eTx = [Server1 "Hi"] <$ _sOpen so
-      eClose = leftmost [_sOpen so, _sClosed so]
+      -- eClose = leftmost [_sOpen so, _sClosed so]
+      eClose = _sClosed so
       sc = SocketConfig s 2048 eTx eClose
     so :: Socket t ClientMessage <- socket sc
     performEvent_ $ liftIO . print <$> _sRecieve so

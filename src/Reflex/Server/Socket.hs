@@ -1,16 +1,19 @@
-{-|
-Copyright   : (c) 2018, Commonwealth Scientific and Industrial Research Organisation
-License     : BSD3
-Maintainer  : dave.laing.80@gmail.com
-Stability   : experimental
-Portability : non-portable
--}
-{-#LANGUAGE ScopedTypeVariables #-}
-{-#LANGUAGE RecursiveDo #-}
-{-#LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TemplateHaskell #-}
 module Reflex.Server.Socket (
     SocketConfig(..)
+  , scInitSocket
+  , scMaxRx
+  , scSend
+  , scClose
   , Socket(..)
+  , sRecieve
+  , sOpen
+  , sError
+  , sClosed
   , socket
   , module Reflex.Server.Socket.Connect
   , module Reflex.Server.Socket.Accept
@@ -28,9 +31,11 @@ import Control.Monad.STM
 import Control.Concurrent.STM.TMVar
 import Control.Concurrent.STM.TQueue
 
+import Control.Lens
+
 import qualified Data.ByteString as B
 
-import Network.Socket hiding (Socket, socket, mkSocket, send, sendTo, recv, recvFrom)
+import Network.Socket hiding (Socket, socket, send, sendTo, recv, recvFrom)
 import qualified Network.Socket as NS
 import Network.Socket.ByteString
 
@@ -49,6 +54,8 @@ data SocketConfig t a =
   , _scClose      :: Event t ()
   }
 
+makeLenses ''SocketConfig
+
 data Socket t b =
   Socket {
     _sRecieve :: Event t b
@@ -56,6 +63,8 @@ data Socket t b =
   , _sError   :: Event t String
   , _sClosed  :: Event t ()
   }
+
+makeLenses ''Socket
 
 socket ::
   forall t m a b.
@@ -77,20 +86,17 @@ socket (SocketConfig initSock mxRx eTx eClose) = mdo
   (eClosed, onClosed) <- newTriggerEvent
 
   payloadQueue <- liftIO newTQueueIO
+  closeQueue <- liftIO . atomically $ newEmptyTMVar
   isOpenRead <- liftIO . atomically $ newEmptyTMVar
   isOpenWrite <- liftIO . atomically $ newEmptyTMVar
 
-  let
-    start = liftIO $ do
-      void . atomically . tryPutTMVar isOpenRead $ initSock
-      void . atomically . tryPutTMVar isOpenWrite $ initSock
-      onOpen ()
-      pure ()
-
   ePostBuild <- getPostBuild
-  performEvent_ $ start <$ ePostBuild
 
   let
+    exHandlerClose :: IOException -> IO ()
+    exHandlerClose =
+      onError . displayException
+
     exHandlerTx :: IOException -> IO Bool
     exHandlerTx e = do
       mSock <- atomically . tryReadTMVar $ isOpenWrite
@@ -98,21 +104,38 @@ socket (SocketConfig initSock mxRx eTx eClose) = mdo
       pure False
 
     txLoop = do
-      mSock <- atomically . tryReadTMVar $ isOpenWrite
-      forM_ mSock $ \sock -> do
-        bs <- atomically . readTQueue $ payloadQueue
-        success <-
-          (sendAll sock (doEncode bs) >> pure True) `catch` exHandlerTx
-        when success txLoop
+      let
+        stmTx = do
+          mSock <- tryReadTMVar isOpenWrite
+          case mSock of
+            Nothing -> pure (Left Nothing)
+            Just sock -> do
+              bs <- readTQueue payloadQueue
+              pure $ Right (sock, bs)
+        stmClose = do
+          mSock <- tryReadTMVar isOpenWrite
+          case mSock of
+            Nothing -> pure (Left Nothing)
+            Just sock -> do
+              _ <- takeTMVar closeQueue
+              pure (Left (Just sock))
+      e <- atomically $ stmClose `orElse` stmTx
+      case e of
+        Right (sock, bs) -> do
+          success <- (sendAll sock (doEncode bs) >> pure True) `catch` exHandlerTx
+          when success txLoop
+        Left (Just sock) -> do
+          void . atomically . tryTakeTMVar $ isOpenWrite
+          void . atomically . tryTakeTMVar $ isOpenRead
+          close sock `catch` exHandlerClose
+          onClosed ()
+        Left Nothing ->
+          txLoop
 
     startTxLoop = liftIO $ do
       mSock <- atomically $ tryReadTMVar isOpenWrite
       forM_ mSock $ \_ -> void . forkIO $ txLoop
 
-  performEvent_ $ ffor eTx $ \payloads -> liftIO $ forM_ payloads $
-    atomically . writeTQueue payloadQueue
-
-  performEvent_ $ startTxLoop <$ ePostBuild
 
   let
     exHandlerRx :: IOException -> IO B.ByteString
@@ -132,33 +155,27 @@ socket (SocketConfig initSock mxRx eTx eClose) = mdo
 
         if B.null bs
         then shutdownRx
-        else do
-          case decoder of
-            IncrementalDecoder c stepRx -> do
-              mDecoder <- stepRx onError onRx bs c
-              case mDecoder of
-                Nothing -> shutdownRx
-                Just c' -> rxLoop $ IncrementalDecoder c' stepRx
+        else runIncrementalDecoder onError onRx (const shutdownRx) rxLoop decoder bs
 
     startRxLoop = liftIO $ do
       mSock <- atomically $ tryReadTMVar isOpenRead
       forM_ mSock $ const . void . forkIO . rxLoop $ getDecoder
 
-  performEvent_ $ startRxLoop <$ ePostBuild
+  performEvent_ $ ffor eTx $ \payloads -> liftIO $ forM_ payloads $
+    atomically . writeTQueue payloadQueue
+
+  performEvent_ $ ffor eClose $ \_ ->
+    liftIO . atomically . putTMVar closeQueue $ ()
 
   let
-    exHandlerClose :: IOException -> IO ()
-    exHandlerClose =
-      onError . displayException
+    start = liftIO $ do
+      void . atomically . tryPutTMVar isOpenRead $ initSock
+      void . atomically . tryPutTMVar isOpenWrite $ initSock
+      startTxLoop
+      startRxLoop
+      onOpen ()
+      pure ()
 
-    closeFn = liftIO $ do
-      mSock <- atomically . tryReadTMVar $ isOpenWrite
-      forM_ mSock $ \sock -> do
-        void . atomically . tryTakeTMVar $ isOpenWrite
-        void . atomically . tryTakeTMVar $ isOpenRead
-        close sock `catch` exHandlerClose
-        onClosed ()
-
-  performEvent_ $ closeFn <$ eClose
+  performEvent_ $ start <$ ePostBuild
 
   pure $ Socket eRx eOpen eError eClosed

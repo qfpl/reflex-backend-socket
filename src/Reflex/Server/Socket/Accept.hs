@@ -6,9 +6,17 @@ Stability   : experimental
 Portability : non-portable
 -}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TemplateHaskell #-}
 module Reflex.Server.Socket.Accept (
     AcceptConfig(..)
+  , acHostname
+  , acPort
+  , acListenQueue
+  , acClose
   , Accept(..)
+  , aAcceptSocket
+  , aListenClosed
+  , aError
   , accept
   ) where
 
@@ -22,7 +30,9 @@ import Control.Monad.Trans (MonadIO(..))
 import Control.Monad.STM
 import Control.Concurrent.STM.TMVar
 
-import Network.Socket hiding (connect, accept)
+import Control.Lens
+
+import Network.Socket hiding (accept)
 import qualified Network.Socket as NS
 
 import Reflex
@@ -35,12 +45,16 @@ data AcceptConfig t =
   , _acClose       :: Event t ()
   }
 
+makeLenses ''AcceptConfig
+
 data Accept t =
   Accept {
     _aAcceptSocket :: Event t (Socket, SockAddr)
   , _aListenClosed :: Event t ()
   , _aError        :: Event t String
   }
+
+makeLenses ''Accept
 
 accept ::
   ( Reflex t
@@ -75,12 +89,12 @@ accept (AcceptConfig mHost mPort listenQueue eClose) = do
       onError . displayException $ e
       pure Nothing
 
-    listenAddr :: AddrInfo -> IO (Maybe Socket)
+    listenAddr :: AddrInfo -> IO Socket
     listenAddr h = do
       sock <- socket (addrFamily h) Stream defaultProtocol
       bind sock (addrAddress h)
       listen sock listenQueue
-      pure $ Just sock
+      pure sock
 
     exHandlerAccept :: IOException -> IO (Maybe (Socket, SockAddr))
     exHandlerAccept e = do
@@ -100,7 +114,7 @@ accept (AcceptConfig mHost mPort listenQueue eClose) = do
     start = liftIO $ do
       mAddrInfos <- getAddr
       forM_ mAddrInfos $ \h -> do
-        mSocket <- listenAddr h `catch` exHandlerSocket
+        mSocket <- (Just <$> listenAddr h) `catch` exHandlerSocket
         forM_ mSocket $ \sock -> do
           void . atomically . tryPutTMVar isOpen $ sock
           void . forkIO $ acceptLoop
