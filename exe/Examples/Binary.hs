@@ -32,9 +32,6 @@ instance Binary ClientMessage where
       0 -> Client1 <$> get
       _ -> error "unknown ClientMessage"
 
-instance CanEncode ClientMessage
-instance CanDecode ClientMessage
-
 data ServerMessage =
   Server1 String
   deriving (Eq, Ord, Show)
@@ -48,9 +45,6 @@ instance Binary ServerMessage where
     case c of
       0 -> Server1 <$> get
       _ -> error "unknown ServerMessage"
-
-instance CanEncode ServerMessage
-instance CanDecode ServerMessage
 
 connect1 :: IO ()
 connect1 = basicHostWithQuit $ do
