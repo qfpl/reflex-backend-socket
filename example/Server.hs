@@ -80,7 +80,10 @@ go = mdo
     eRemoves = fmap Map.keys . switchDyn . fmap (mergeMap . fmap snd) $ dme
 
     -- quit if we end up with an empty map
-    eQuit = void . ffilter id . updated . fmap Map.null $ dMap
+    eQuitMap = void . ffilter id . updated . fmap Map.null $ dMap
+    eQuitListenClose = _aListenClosed a
+    eQuitListenError = void $ _aError a
+    eQuit = leftmost [eQuitMap, eQuitListenClose, eQuitListenError]
   pure ((), eQuit)
 
 main :: IO ()

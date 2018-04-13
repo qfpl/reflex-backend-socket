@@ -73,6 +73,8 @@ accept (AcceptConfig mHost mPort listenQueue eClose) = do
 
   isOpen <- liftIO . atomically $ newEmptyTMVar
 
+  ePostBuild <- getPostBuild
+
   let
     exHandlerGetAddr :: IOException -> IO [AddrInfo]
     exHandlerGetAddr e = do
@@ -89,12 +91,12 @@ accept (AcceptConfig mHost mPort listenQueue eClose) = do
       onError . displayException $ e
       pure Nothing
 
-    listenAddr :: AddrInfo -> IO Socket
+    listenAddr :: AddrInfo -> IO (Maybe Socket)
     listenAddr h = do
       sock <- socket (addrFamily h) Stream defaultProtocol
       bind sock (addrAddress h)
       listen sock listenQueue
-      pure sock
+      pure $ Just sock
 
     exHandlerAccept :: IOException -> IO (Maybe (Socket, SockAddr))
     exHandlerAccept e = do
@@ -114,18 +116,15 @@ accept (AcceptConfig mHost mPort listenQueue eClose) = do
     start = liftIO $ do
       mAddrInfos <- getAddr
       forM_ mAddrInfos $ \h -> do
-        mSocket <- (Just <$> listenAddr h) `catch` exHandlerSocket
+        mSocket <- listenAddr h `catch` exHandlerSocket
         forM_ mSocket $ \sock -> do
           void . atomically . tryPutTMVar isOpen $ sock
           void . forkIO $ acceptLoop
 
-    closeSock = liftIO $ do
-      mSock <- atomically . tryTakeTMVar $ isOpen
-      forM_ mSock close
+  performEvent_ $ ffor eClose $ \_ -> liftIO $ do
+    mSock <- atomically . tryTakeTMVar $ isOpen
+    forM_ mSock close
 
-  ePostBuild <- getPostBuild
   performEvent_ $ start <$ ePostBuild
-
-  performEvent_ $ ffor eClose $ const closeSock
 
   pure $ Accept eAcceptSocket eClosed eError
