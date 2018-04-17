@@ -19,7 +19,7 @@ library
   exposed-modules:     Reflex.Server.Socket
                      , Reflex.Server.Socket.Connect
                      , Reflex.Server.Socket.Accept
-  build-depends:       base              >= 4.9    && < 4.11
+  build-depends:       base              >= 4.9    && < 4.12
                      , binary            >= 0.8    && < 0.10
                      , bytestring        >= 0.10   && < 0.11
                      , containers        >= 0.5    && < 0.6
@@ -40,7 +40,7 @@ library
 executable example-server
   main-is:             Server.hs
   other-modules:       Common
-  build-depends:       base              >= 4.9    && < 4.11
+  build-depends:       base              >= 4.9    && < 4.12
                      , mtl               >= 2.2    && < 2.3
                      , binary            >= 0.8    && < 0.10
                      , bytestring        >= 0.10   && < 0.11
