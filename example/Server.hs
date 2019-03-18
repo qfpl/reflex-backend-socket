@@ -30,7 +30,7 @@ import Reflex
 
 import Reflex.Host.Basic
 import Reflex.Host.Subhost
-import Reflex.Server.Socket
+import Reflex.Backend.Socket
 
 import Common
 

@@ -26,7 +26,7 @@ import Reflex
 import Reflex.Workflow
 
 import Reflex.Host.Basic
-import Reflex.Server.Socket
+import Reflex.Backend.Socket
 
 import Common
 

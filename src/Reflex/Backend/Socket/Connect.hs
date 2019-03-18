@@ -7,7 +7,7 @@ Portability : non-portable
 -}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TemplateHaskell #-}
-module Reflex.Server.Socket.Connect (
+module Reflex.Backend.Socket.Connect (
     ConnectConfig(..)
   , ccHostname
   , ccPort

@@ -9,7 +9,7 @@ Portability : non-portable
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleContexts #-}
-module Reflex.Server.Socket.Subhost (
+module Reflex.Backend.Socket.Subhost (
     SocketConfig(..)
   , Socket(..)
   , socketSubhost
@@ -26,7 +26,7 @@ import Reflex
 import Reflex.Host.Basic
 import Reflex.Host.Subhost
 
-import Reflex.Server.Socket
+import Reflex.Backend.Socket
 
 data SocketConfigTag a i x where
   SCTSend  :: SocketConfigTag a i [a]

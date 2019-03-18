@@ -1,4 +1,4 @@
-# Revision history for reflex-server-socket
+# Revision history for reflex-backend-socket
 
 ## 0.1.0.0  -- YYYY-mm-dd
 

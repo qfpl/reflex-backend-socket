@@ -7,7 +7,7 @@ Portability : non-portable
 -}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TemplateHaskell #-}
-module Reflex.Server.Socket.Accept (
+module Reflex.Backend.Socket.Accept (
     AcceptConfig(..)
   , acHostname
   , acPort

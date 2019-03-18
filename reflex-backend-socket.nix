@@ -3,7 +3,7 @@
 , reflex-binary, stdenv, stm, these
 }:
 mkDerivation {
-  pname = "reflex-server-socket";
+  pname = "reflex-backend-socket";
   version = "0.1.0.0";
   src = ./.;
   isLibrary = true;

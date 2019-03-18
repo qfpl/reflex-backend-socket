@@ -18,6 +18,6 @@ let
     };
   };
 
-  drv = modifiedHaskellPackages.callPackage ./reflex-server-socket.nix {};
+  drv = modifiedHaskellPackages.callPackage ./reflex-backend-socket.nix {};
 in
   drv

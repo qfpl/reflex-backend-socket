@@ -14,9 +14,9 @@ import qualified Data.Map as Map
 
 import Reflex
 
-import Reflex.Binary
-import Reflex.Server.Socket
 import Reflex.Host.Basic
+import Reflex.Binary
+import Reflex.Backend.Socket
 
 data ClientMessage =
   Client1 String

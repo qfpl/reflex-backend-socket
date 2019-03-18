@@ -3,7 +3,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TemplateHaskell #-}
-module Reflex.Server.Socket (
+module Reflex.Backend.Socket (
     SocketConfig(..)
   , scInitSocket
   , scMaxRx
@@ -15,8 +15,8 @@ module Reflex.Server.Socket (
   , sError
   , sClosed
   , socket
-  , module Reflex.Server.Socket.Connect
-  , module Reflex.Server.Socket.Accept
+  , module Reflex.Backend.Socket.Connect
+  , module Reflex.Backend.Socket.Accept
   ) where
 
 import Control.Concurrent (forkIO)
@@ -43,8 +43,8 @@ import Reflex
 
 import Reflex.Binary
 
-import Reflex.Server.Socket.Connect
-import Reflex.Server.Socket.Accept
+import Reflex.Backend.Socket.Connect
+import Reflex.Backend.Socket.Accept
 
 data SocketConfig t a =
   SocketConfig {

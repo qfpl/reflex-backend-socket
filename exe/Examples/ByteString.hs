@@ -16,8 +16,8 @@ import Reflex
 
 import qualified Data.Map as Map
 
-import Reflex.Server.Socket
 import Reflex.Host.Basic
+import Reflex.Backend.Socket
 
 connect1 :: IO ()
 connect1 = basicHostWithQuit $ do
