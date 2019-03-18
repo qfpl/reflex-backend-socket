@@ -1,7 +1,7 @@
 {
-  "url": "https://github.com/dalaing/reflex-binary",
-  "rev": "fd9994b8d14ce55fd397042c51aad0b62bd431f8",
-  "date": "2018-04-17T10:14:09+10:00",
-  "sha256": "046d32gq7icmb3qdhsszrwfz5sa6sxp3dyhh0rrbv361lrbx5kmz",
-  "fetchSubmodules": true
+  "url": "https://github.com/qfpl/reflex-binary",
+  "rev": "d07e439fc0a76c015740c2e3a0d0629dd6a741b0",
+  "date": "2019-03-18T10:34:20+10:00",
+  "sha256": "0v0ii0fwv08vb9dah2b0f2ln93nn0d7gmg6m0jb0dyzlidwf7g2j",
+  "fetchSubmodules": false
 }

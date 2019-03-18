@@ -35,7 +35,7 @@ import Control.Lens
 
 import qualified Data.ByteString as B
 
-import Network.Socket hiding (Socket, socket, send, sendTo, recv, recvFrom)
+import Network.Socket hiding (Socket, socket, send, sendTo, recv, recvFrom, accept)
 import qualified Network.Socket as NS
 import Network.Socket.ByteString
 

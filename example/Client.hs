@@ -28,8 +28,6 @@ import Reflex.Workflow
 import Reflex.Host.Basic
 import Reflex.Backend.Socket
 
-import Common
-
 main :: IO ()
 main = basicHostWithQuit $ do
   deQuit <- workflow unconnected

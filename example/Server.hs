@@ -29,10 +29,7 @@ import qualified Data.ByteString as B
 import Reflex
 
 import Reflex.Host.Basic
-import Reflex.Host.Subhost
 import Reflex.Backend.Socket
-
-import Common
 
 type ServerCxt t m =
   ( Reflex t
@@ -73,7 +70,7 @@ go = mdo
           ]
 
   dme <- list dMap $ \dv ->
-    subhost dv eIn perConnection
+    perConnection dv eIn
 
   let
     eIn :: Event t [B.ByteString] = fmap Map.elems . switchDyn . fmap (mergeMap . fmap fst) $ dme
