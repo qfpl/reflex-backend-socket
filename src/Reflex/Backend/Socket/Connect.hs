@@ -19,7 +19,7 @@ module Reflex.Backend.Socket.Connect (
 
 import Control.Monad (forM_, forM)
 
-import Control.Exception (IOException, catch, displayException)
+import Control.Exception (IOException, catch)
 import Control.Monad.Trans (MonadIO(..))
 
 import Control.Lens
@@ -40,7 +40,7 @@ makeLenses ''ConnectConfig
 data Connect t =
   Connect {
     _cSocket :: Event t Socket
-  , _cError  :: Event t String
+  , _cError  :: Event t IOException
   }
 
 makeLenses ''Connect
@@ -61,9 +61,7 @@ connect (ConnectConfig mHost mPort) = do
 
   let
     exHandlerGetAddr :: IOException -> IO [AddrInfo]
-    exHandlerGetAddr e = do
-      onError . displayException $ e
-      pure []
+    exHandlerGetAddr e = [] <$ onError e
 
     getAddr :: IO (Maybe AddrInfo)
     getAddr = do
@@ -73,9 +71,7 @@ connect (ConnectConfig mHost mPort) = do
         h : _ -> Just h
 
     exHandler :: IOException -> IO (Maybe Socket)
-    exHandler e = do
-      onError . displayException $ e
-      pure Nothing
+    exHandler e = Nothing <$ onError e
 
     connectAddr :: AddrInfo -> IO (Maybe Socket)
     connectAddr h = do
