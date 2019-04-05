@@ -46,8 +46,11 @@ type ClientCxt t m =
 unconnected :: ClientCxt t m => Workflow t m (Event t ())
 unconnected = Workflow $ do
   c <- connect $ ConnectConfig (Just "127.0.0.1") (Just "9000")
-  -- TODO need to check for errors and quit appropriately here
-  pure (never, connected <$> _cSocket c)
+  eReportedError <-
+    performEvent $
+    (\e -> liftIO $ putStrLn "Error:\n" *> print e) <$>
+    _cError c
+  pure (() <$ eReportedError, connected <$> _cSocket c)
 
 connected :: ClientCxt t m => NS.Socket -> Workflow t m (Event t ())
 connected s = Workflow $ mdo

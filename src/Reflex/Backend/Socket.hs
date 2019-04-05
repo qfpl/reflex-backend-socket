@@ -23,7 +23,7 @@ import Control.Concurrent (forkIO)
 import Control.Monad (when, void)
 import Data.Foldable (forM_)
 
-import Control.Exception (IOException, catch, displayException)
+import Control.Exception (IOException, catch)
 
 import Control.Monad.Trans (MonadIO(..))
 
@@ -56,11 +56,16 @@ data SocketConfig t a =
 
 makeLenses ''SocketConfig
 
+data SocketError
+  = SocketIOException IOException
+  | SocketDecodeError String
+  deriving (Eq, Show)
+
 data Socket t b =
   Socket {
     _sRecieve :: Event t b
   , _sOpen    :: Event t ()
-  , _sError   :: Event t String
+  , _sError   :: Event t SocketError
   , _sClosed  :: Event t ()
   }
 
@@ -94,13 +99,12 @@ socket (SocketConfig initSock mxRx eTx eClose) = mdo
 
   let
     exHandlerClose :: IOException -> IO ()
-    exHandlerClose =
-      onError . displayException
+    exHandlerClose = onError . SocketIOException
 
     exHandlerTx :: IOException -> IO Bool
     exHandlerTx e = do
       mSock <- atomically . tryReadTMVar $ isOpenWrite
-      forM_ mSock $ \_ -> onError (displayException e)
+      forM_ mSock $ \_ -> onError (SocketIOException e)
       pure False
 
     txLoop = do
@@ -141,7 +145,7 @@ socket (SocketConfig initSock mxRx eTx eClose) = mdo
     exHandlerRx :: IOException -> IO B.ByteString
     exHandlerRx e = do
       mSock <- atomically . tryReadTMVar $ isOpenRead
-      forM_ mSock $ \_ -> onError (displayException e)
+      forM_ mSock $ \_ -> onError (SocketIOException e)
       pure B.empty
 
     shutdownRx = do
@@ -154,8 +158,15 @@ socket (SocketConfig initSock mxRx eTx eClose) = mdo
         bs <- recv sock mxRx `catch` exHandlerRx
 
         if B.null bs
-        then shutdownRx
-        else runIncrementalDecoder onError onRx (const shutdownRx) rxLoop decoder bs
+          then shutdownRx
+          else
+            runIncrementalDecoder
+              (onError . SocketDecodeError)
+              onRx
+              (const shutdownRx)
+              rxLoop
+              decoder
+              bs
 
     startRxLoop = liftIO $ do
       mSock <- atomically $ tryReadTMVar isOpenRead

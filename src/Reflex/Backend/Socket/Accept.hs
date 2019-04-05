@@ -24,7 +24,7 @@ import Control.Concurrent (forkIO)
 import Control.Monad (forM_, void)
 import Data.Maybe (listToMaybe)
 
-import Control.Exception (IOException, catch, displayException)
+import Control.Exception (IOException, catch)
 import Control.Monad.Trans (MonadIO(..))
 
 import Control.Monad.STM
@@ -44,16 +44,14 @@ data AcceptConfig t =
   , _acListenQueue :: Int
   , _acClose       :: Event t ()
   }
-
 makeLenses ''AcceptConfig
 
 data Accept t =
   Accept {
     _aAcceptSocket :: Event t (Socket, SockAddr)
   , _aListenClosed :: Event t ()
-  , _aError        :: Event t String
+  , _aError        :: Event t IOException
   }
-
 makeLenses ''Accept
 
 accept ::
@@ -77,9 +75,7 @@ accept (AcceptConfig mHost mPort listenQueue eClose) = do
 
   let
     exHandlerGetAddr :: IOException -> IO [AddrInfo]
-    exHandlerGetAddr e = do
-      onError . displayException $ e
-      pure []
+    exHandlerGetAddr e = [] <$ onError e
 
     getAddr :: IO (Maybe AddrInfo)
     getAddr = do
@@ -87,9 +83,7 @@ accept (AcceptConfig mHost mPort listenQueue eClose) = do
       pure $ listToMaybe addrInfos
 
     exHandlerSocket :: IOException -> IO (Maybe Socket)
-    exHandlerSocket e = do
-      onError . displayException $ e
-      pure Nothing
+    exHandlerSocket e = Nothing <$ onError e
 
     listenAddr :: AddrInfo -> IO (Maybe Socket)
     listenAddr h = do
@@ -101,8 +95,7 @@ accept (AcceptConfig mHost mPort listenQueue eClose) = do
     exHandlerAccept :: IOException -> IO (Maybe (Socket, SockAddr))
     exHandlerAccept e = do
       void . atomically . tryTakeTMVar $ isOpen
-      onError . displayException $ e
-      pure Nothing
+      Nothing <$ onError e
 
     acceptLoop :: IO ()
     acceptLoop = do

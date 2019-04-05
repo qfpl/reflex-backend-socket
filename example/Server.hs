@@ -57,7 +57,7 @@ perConnection dv' eIn' = mdo
 
   pure (eOut, eQuit)
 
-go :: forall t m. BasicGuest t m ((), Event t ())
+go :: forall t m. BasicGuestConstraints t m => BasicGuest t m ((), Event t ())
 go = mdo
   a <- accept $ AcceptConfig (Just "127.0.0.1") (Just "9000") 1 eQuit
 
