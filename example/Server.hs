@@ -50,7 +50,7 @@ perConnection dv' eIn' = mdo
     sc = SocketConfig s 4096 eIn' eQuit
   so <- socket sc
   let
-    eRx = _sRecieve so
+    eRx = _sReceive so
     eClosed = _sClosed so
     eQuit = leftmost [void . ffilter (== "quit") $ eRx, eClosed]
     eOut = ffilter (/= "quit") eRx

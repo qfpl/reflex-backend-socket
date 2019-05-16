@@ -10,7 +10,7 @@ module Reflex.Backend.Socket (
   , scSend
   , scClose
   , Socket(..)
-  , sRecieve
+  , sReceive
   , sOpen
   , sError
   , sClosed
@@ -63,7 +63,7 @@ data SocketError
 
 data Socket t b =
   Socket {
-    _sRecieve :: Event t b
+    _sReceive :: Event t b
   , _sOpen    :: Event t ()
   , _sError   :: Event t SocketError
   , _sClosed  :: Event t ()
