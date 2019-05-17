@@ -53,7 +53,7 @@ connect1 = basicHostWithQuit $ do
   performEvent_ $ (liftIO . putStrLn $ "Connected") <$ _cSocket c
   performEvent_ $ liftIO . putStrLn <$> _cError c
 
-  let 
+  let
     eQuit = leftmost [void (_cSocket c), void (_cError c)]
 
   pure ((), eQuit)
@@ -94,7 +94,7 @@ connect2' = mdo
       eClose = () <$ _sOpen so
       sc = SocketConfig s 2048 eTx eClose
     so :: Socket t ServerMessage <- socket (sc :: SocketConfig t ClientMessage)
-    performEvent_ $ liftIO . print <$> _sRecieve so
+    performEvent_ $ liftIO . print <$> _sReceive so
     performEvent_ $ liftIO . putStrLn <$> _sError so
     performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _sClosed so
     pure $ () <$ _sClosed so
@@ -130,7 +130,7 @@ accept2' = mdo
     let
       sc = SocketConfig s 2048 never never
     so :: Socket t ClientMessage <- socket (sc :: SocketConfig t ServerMessage)
-    performEvent_ $ liftIO . print <$> _sRecieve so
+    performEvent_ $ liftIO . print <$> _sReceive so
     performEvent_ $ liftIO . putStrLn <$> _sError so
     performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _sClosed so
     pure $ () <$ _sClosed so
@@ -162,9 +162,9 @@ connect3' = mdo
   dmeRemoves <- list dMap $ \ds -> mdo
     s <- sample . current $ ds
     let
-      sc = SocketConfig s 2048 never (void $ _sRecieve so)
+      sc = SocketConfig s 2048 never (void $ _sReceive so)
     so :: Socket t ServerMessage <- socket (sc :: SocketConfig t ClientMessage)
-    performEvent_ $ liftIO . print <$> _sRecieve so
+    performEvent_ $ liftIO . print <$> _sReceive so
     performEvent_ $ liftIO . putStrLn <$> _sError so
     performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _sClosed so
     pure $ () <$ _sClosed so
@@ -203,7 +203,7 @@ accept3' = mdo
       eClose = _sClosed so
       sc = SocketConfig s 2048 eTx eClose
     so :: Socket t ClientMessage <- socket sc
-    performEvent_ $ liftIO . print <$> _sRecieve so
+    performEvent_ $ liftIO . print <$> _sReceive so
     performEvent_ $ liftIO . putStrLn <$> _sError so
     performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _sClosed so
     pure $ () <$ _sClosed so
@@ -239,9 +239,9 @@ connect4' = mdo
       eClose = leftmost [void . ffilter id . updated $ dRxDone, _sClosed so]
       sc = SocketConfig s 2048 eTx eClose
     so :: Socket t ServerMessage <- socket sc
-    dRxCount :: Dynamic t Int <- count $ _sRecieve so
+    dRxCount :: Dynamic t Int <- count $ _sReceive so
     let dRxDone = (>= 2) <$> dRxCount
-    performEvent_ $ liftIO . print <$> _sRecieve so
+    performEvent_ $ liftIO . print <$> _sReceive so
     performEvent_ $ liftIO . putStrLn <$> _sError so
     performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _sClosed so
     pure $ () <$ _sClosed so
@@ -275,10 +275,10 @@ accept4' = mdo
   dmeRemoves <- list dMap $ \ds -> mdo
     s <- sample . current $ ds
     let
-      eTx = [Server1 "Hello"] <$ _sRecieve so
+      eTx = [Server1 "Hello"] <$ _sReceive so
       sc = SocketConfig s 2048 eTx (_sClosed so)
     so :: Socket t ClientMessage <- socket sc
-    performEvent_ $ liftIO . print <$> _sRecieve so
+    performEvent_ $ liftIO . print <$> _sReceive so
     performEvent_ $ liftIO . putStrLn <$> _sError so
     performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _sClosed so
     pure $ () <$ _sClosed so

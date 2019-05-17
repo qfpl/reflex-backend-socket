@@ -61,9 +61,8 @@ connected s = Workflow $ mdo
   let
     sc = SocketConfig s 2048 eLine eQuit
   so <- socket sc
-  performEvent_ $ liftIO . putStrLn . BC.unpack <$> _sRecieve so
+  performEvent_ $ liftIO . putStrLn . BC.unpack <$> _sReceive so
   let
     eQuit = _sClosed so
 
   pure (eQuit, unconnected <$ eQuit)
-

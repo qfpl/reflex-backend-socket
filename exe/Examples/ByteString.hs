@@ -67,7 +67,7 @@ connect2' = mdo
       eClose = () <$ _sOpen so
     so <- socket $ SocketConfig s 2048 eTx eClose
 
-    performEvent_ $ liftIO . BC.putStrLn <$> _sRecieve so
+    performEvent_ $ liftIO . BC.putStrLn <$> _sReceive so
     performEvent_ $ liftIO . putStrLn <$> _sError so
     performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _sClosed so
     pure $ () <$ _sClosed so
@@ -103,7 +103,7 @@ accept2' = mdo
 
     so <- socket $ SocketConfig s 2048 (([] :: [B.ByteString]) <$ never) never
 
-    performEvent_ $ liftIO . BC.putStrLn <$> _sRecieve so
+    performEvent_ $ liftIO . BC.putStrLn <$> _sReceive so
     performEvent_ $ liftIO . putStrLn <$> _sError so
     performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _sClosed so
 
@@ -136,7 +136,7 @@ connect3' = mdo
   dmeRemoves <- list dMap $ \ds -> mdo
     s <- sample . current $ ds
     so <- socket $ SocketConfig s 2048 (([] :: [B.ByteString]) <$ never) (_sClosed so)
-    performEvent_ $ liftIO . BC.putStrLn <$> _sRecieve so
+    performEvent_ $ liftIO . BC.putStrLn <$> _sReceive so
     performEvent_ $ liftIO . putStrLn <$> _sError so
     performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _sClosed so
     pure $ () <$ _sClosed so
@@ -173,7 +173,7 @@ accept3' = mdo
       eTx = ["Hi" :: B.ByteString] <$ _sOpen so
       eClose = leftmost [_sOpen so, _sClosed so]
     so <- socket $ SocketConfig s 2048 eTx eClose
-    performEvent_ $ liftIO . BC.putStrLn <$> _sRecieve so
+    performEvent_ $ liftIO . BC.putStrLn <$> _sReceive so
     performEvent_ $ liftIO . putStrLn <$> _sError so
     performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _sClosed so
     pure $ () <$ _sClosed so
@@ -206,9 +206,9 @@ connect4' = mdo
     s <- sample . current $ ds
     let
       eTx = ["Hi" :: B.ByteString] <$ _sOpen so
-      eClose = leftmost [() <$ _sRecieve so, _sClosed so]
+      eClose = leftmost [() <$ _sReceive so, _sClosed so]
     so <- socket $ SocketConfig s 2048 eTx eClose
-    performEvent_ $ liftIO . BC.putStrLn <$> _sRecieve so
+    performEvent_ $ liftIO . BC.putStrLn <$> _sReceive so
     performEvent_ $ liftIO . putStrLn <$> _sError so
     performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _sClosed so
     pure $ () <$ _sClosed so
@@ -242,9 +242,9 @@ accept4' = mdo
   dmeRemoves <- list dMap $ \ds -> mdo
     s <- sample . current $ ds
     let
-      eTx = ["Hello" :: B.ByteString] <$ _sRecieve so
+      eTx = ["Hello" :: B.ByteString] <$ _sReceive so
     so <- socket $ SocketConfig s 2048 eTx (_sClosed so)
-    performEvent_ $ liftIO . BC.putStrLn <$> _sRecieve so
+    performEvent_ $ liftIO . BC.putStrLn <$> _sReceive so
     performEvent_ $ liftIO . putStrLn <$> _sError so
     performEvent_ $ (liftIO . putStrLn $ "Closed") <$ _sClosed so
     pure $ () <$ _sClosed so
