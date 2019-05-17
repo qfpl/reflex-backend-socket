@@ -13,8 +13,8 @@ mkDerivation {
     mtl network reflex reflex-basic-host reflex-binary stm these
   ];
   executableHaskellDepends = [
-    base binary containers mtl network reflex reflex-basic-host
-    reflex-binary
+    base binary bytestring containers mtl network reflex
+    reflex-basic-host reflex-binary
   ];
   license = stdenv.lib.licenses.bsd3;
 }
