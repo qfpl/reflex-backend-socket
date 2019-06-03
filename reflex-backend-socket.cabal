@@ -2,15 +2,15 @@
 --  documentation, see http://haskell.org/cabal/users-guide/
 
 name:                reflex-backend-socket
-version:             0.1.0.0
--- synopsis:
+version:             0.2.0.0
+synopsis:            Reflex bindings for TCP sockets
 -- description:
 license:             BSD3
 license-file:        LICENSE
 author:              Dave Laing
 maintainer:          dave.laing.80@gmail.com
--- copyright:
--- category:
+copyright:           (c) 2018-2019, Commonwealth Scientific and Industrial Research Organisation
+category:            Network
 build-type:          Simple
 extra-source-files:  ChangeLog.md
 cabal-version:       >=1.10

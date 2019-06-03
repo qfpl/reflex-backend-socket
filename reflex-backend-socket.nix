@@ -4,7 +4,7 @@
 }:
 mkDerivation {
   pname = "reflex-backend-socket";
-  version = "0.1.0.0";
+  version = "0.2.0.0";
   src = ./.;
   isLibrary = true;
   isExecutable = true;
@@ -17,5 +17,6 @@ mkDerivation {
     base binary bytestring containers mtl network reflex
     reflex-basic-host
   ];
+  description = "Reflex bindings for TCP sockets";
   license = stdenv.lib.licenses.bsd3;
 }
