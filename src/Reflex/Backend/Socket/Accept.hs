@@ -35,7 +35,6 @@ module Reflex.Backend.Socket.Accept
 import           Control.Concurrent (forkIO)
 import           Control.Concurrent.STM (newTMVarIO, tryReadTMVar, tryTakeTMVar)
 import           Control.Exception (IOException, catch, onException, try)
-import           Control.Lens.TH (makeLenses)
 import           Control.Monad.Except (ExceptT(..), runExceptT, withExceptT)
 import           Control.Monad.STM (atomically)
 import           Control.Monad.Trans (MonadIO(..))
@@ -44,6 +43,7 @@ import           Data.Functor (($>), void)
 import           Data.List.NonEmpty (NonEmpty, fromList)
 import           Data.Semigroup (Last(..))
 import           Data.Semigroup.Foldable (asum1)
+import           Lens.Micro.TH (makeLenses)
 import           Network.Socket (AddrInfo(..), AddrInfoFlag(..), Socket)
 import qualified Network.Socket as NS
 import           Reflex

@@ -41,13 +41,13 @@ module Reflex.Backend.Socket
 import           Control.Concurrent (forkIO)
 import qualified Control.Concurrent.STM as STM
 import           Control.Exception (IOException, catch, try)
-import           Control.Lens.TH (makeLenses)
 import           Control.Monad.IO.Class (MonadIO(..))
 import           Control.Monad.STM (atomically, orElse)
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import           Data.Foldable (for_)
 import           Data.Functor (($>), (<&>), void)
+import           Lens.Micro.TH (makeLenses)
 import qualified Network.Socket as NS
 import           Network.Socket.ByteString (sendAll, recv)
 import           Reflex
