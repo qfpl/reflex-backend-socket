@@ -128,6 +128,7 @@ accept (AcceptConfig mHost mService listenQueue eClose) = do
             tryListen info = ExceptT . try $ do
               sock <- NS.socket (addrFamily info) NS.Stream NS.defaultProtocol
               (`onException` NS.close sock) $ do
+                NS.setSocketOption sock NS.ReuseAddr 1
                 NS.bind sock (addrAddress info)
                 NS.listen sock listenQueue
               pure sock
