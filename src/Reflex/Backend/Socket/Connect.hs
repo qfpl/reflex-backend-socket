@@ -39,7 +39,8 @@ connect
   => Maybe (NS.HostName)
      -- ^ Host to connect to. If 'Nothing', connect via loopback.
   -> NS.ServiceName
-     -- ^ Service (i.e., port). See @man 3 getaddrinfo@.
+     -- ^ Service (port number or service name). See the
+     -- <https://linux.die.net/man/3/getaddrinfo manpage for getaddrinfo>.
   -> m (Event t (Either IOException Socket))
      -- ^ This event will fire exactly once.
 connect mHost service = do
@@ -60,7 +61,7 @@ connect mHost service = do
         addrs <- getAddrs
         let attempts = withExceptT (Last . Just) . tryConnect <$> addrs
         -- fromJust is probably OK here, as getaddrinfo(3) is required
-        -- to return nonempty list of addrinfos.
+        -- to return a nonempty list of addrinfos.
         --
         -- See: http://pubs.opengroup.org/onlinepubs/9699919799/functions/getaddrinfo.html
         -- And: https://github.com/haskell/network/issues/407
