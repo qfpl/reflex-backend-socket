@@ -93,7 +93,7 @@ go = mdo
 
     -- Quit if we end up with an empty map
     eQuitMap = void . ffilter id . updated $ Map.null <$> dSocketMap
-    eQuitListenClose = _aListenClosed a
+    eQuitListenClose = _aClosed a
     eQuitListenError = void $ _aError a
     eQuit = leftmost [eQuitMap, eQuitListenClose, eQuitListenError]
   pure ((), eQuit)

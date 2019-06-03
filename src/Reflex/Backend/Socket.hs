@@ -1,192 +1,163 @@
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE RecursiveDo         #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE RecursiveDo #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TemplateHaskell #-}
-module Reflex.Backend.Socket (
-    SocketConfig(..)
+{-# LANGUAGE TemplateHaskell     #-}
+
+{-|
+Copyright   : (c) 2018-2019, Commonwealth Scientific and Industrial Research Organisation
+License     : BSD3
+Maintainer  : dave.laing.80@gmail.com
+Stability   : experimental
+Portability : non-portable
+-}
+
+module Reflex.Backend.Socket
+  ( socket
+
+    -- * Socket Configuration
+  , SocketConfig(..)
+
+    -- * Socket Output Events
+  , Socket(..)
+
+    -- * Convenience Re-Exports
+  , connect
+  , module Reflex.Backend.Socket.Accept
+
+  -- * Lenses
+  -- ** SocketConfig
   , scInitSocket
   , scMaxRx
   , scSend
   , scClose
-  , Socket(..)
+
+  -- ** Socket
   , sReceive
   , sOpen
-  , sError
   , sClosed
-  , socket
-  , module Reflex.Backend.Socket.Connect
-  , module Reflex.Backend.Socket.Accept
+  , sError
   ) where
 
-import Control.Concurrent (forkIO)
-import Control.Monad (when, void)
-import Data.Foldable (forM_)
-
-import Control.Exception (IOException, catch)
-
-import Control.Monad.Trans (MonadIO(..))
-
-import Control.Monad.STM
-import Control.Concurrent.STM.TMVar
-import Control.Concurrent.STM.TQueue
-
-import Control.Lens
-
-import qualified Data.ByteString as B
-
-import Network.Socket hiding (Socket, socket, send, sendTo, recv, recvFrom, accept)
+import           Control.Concurrent (forkIO)
+import qualified Control.Concurrent.STM as STM
+import           Control.Exception (IOException, catch, try)
+import           Control.Lens.TH (makeLenses)
+import           Control.Monad.IO.Class (MonadIO(..))
+import           Control.Monad.STM (atomically, orElse)
+import           Data.ByteString (ByteString)
+import           Data.Foldable (for_)
+import           Data.Functor (($>), (<&>), void)
 import qualified Network.Socket as NS
-import Network.Socket.ByteString
+import           Network.Socket.ByteString (sendAll, recv)
+import           Reflex
+import           Reflex.Backend.Socket.Accept
+import           Reflex.Backend.Socket.Connect (connect)
 
-import Reflex
-
-import Reflex.Binary
-
-import Reflex.Backend.Socket.Connect
-import Reflex.Backend.Socket.Accept
-
-data SocketConfig t a =
-  SocketConfig {
-    _scInitSocket :: NS.Socket
+data SocketConfig t = SocketConfig
+  { _scInitSocket :: NS.Socket
   , _scMaxRx      :: Int
-  , _scSend       :: Event t [a]
+  , _scSend       :: Event t ByteString
   , _scClose      :: Event t ()
   }
 
-makeLenses ''SocketConfig
+$(makeLenses ''SocketConfig)
 
-data SocketError
-  = SocketIOException IOException
-  | SocketDecodeError String
-  deriving (Eq, Show)
-
-data Socket t b =
-  Socket {
-    _sReceive :: Event t b
+-- | Events produced by an active socket.
+data Socket t = Socket
+  { _sReceive :: Event t ByteString
+    -- ^ Data has arrived.
   , _sOpen    :: Event t ()
-  , _sError   :: Event t SocketError
+    -- ^ The socket is open, and its receive/send loops are running.
   , _sClosed  :: Event t ()
+    -- ^ The socket has closed. This will fire exactly once when the
+    -- socket closes for any reason, including if your '_scClose'
+    -- event fires, the other end disconnects, or if the socket closes
+    -- in response to a caught exception.
+  , _sError   :: Event t IOException
+    -- ^ An exception occurred. Treat the socket as closed after you
+    -- see this. If the socket was open, you will see the '_sClosed'
+    -- event fire as well, but not necessarily in the same frame.
   }
 
-makeLenses ''Socket
+$(makeLenses ''Socket)
 
-socket ::
-  forall t m a b.
-  ( Reflex t
-  , PerformEvent t m
-  , PostBuild t m
-  , TriggerEvent t m
-  , MonadIO (Performable m)
-  , MonadIO m
-  , CanEncode a
-  , CanDecode b
-  ) =>
-  SocketConfig t a ->
-  m (Socket t b)
-socket (SocketConfig initSock mxRx eTx eClose) = mdo
+data TxStepResult
+  = Send NS.Socket ByteString
+  | Close NS.Socket
+
+-- | Wire a socket into the FRP network. You will likely use this to
+-- attach events to a socket that you just connected (from 'connect'),
+-- or a socket that you just accepted (from the '_aAcceptSocket' event
+-- you got when you called 'accept').
+socket
+  :: forall t m.
+     ( Reflex t
+     , PerformEvent t m
+     , PostBuild t m
+     , TriggerEvent t m
+     , MonadIO (Performable m)
+     , MonadIO m
+     )
+  => SocketConfig t
+  -> m (Socket t)
+socket (SocketConfig initSock maxRx eTx eClose) = mdo
   (eRx, onRx) <- newTriggerEvent
   (eOpen, onOpen) <- newTriggerEvent
   (eError, onError) <- newTriggerEvent
   (eClosed, onClosed) <- newTriggerEvent
 
-  payloadQueue <- liftIO newTQueueIO
-  closeQueue <- liftIO . atomically $ newEmptyTMVar
-  isOpenRead <- liftIO . atomically $ newEmptyTMVar
-  isOpenWrite <- liftIO . atomically $ newEmptyTMVar
+  payloadQueue <- liftIO STM.newTQueueIO
+  closeQueue <- liftIO STM.newEmptyTMVarIO
+  isOpen <- liftIO $ STM.newTMVarIO initSock
 
   ePostBuild <- getPostBuild
 
   let
-    exHandlerClose :: IOException -> IO ()
-    exHandlerClose = onError . SocketIOException
-
-    exHandlerTx :: IOException -> IO Bool
-    exHandlerTx e = do
-      mSock <- atomically . tryReadTMVar $ isOpenWrite
-      forM_ mSock $ \_ -> onError (SocketIOException e)
-      pure False
-
-    txLoop = do
-      let
-        stmTx = do
-          mSock <- tryReadTMVar isOpenWrite
-          case mSock of
-            Nothing -> pure (Left Nothing)
-            Just sock -> do
-              bs <- readTQueue payloadQueue
-              pure $ Right (sock, bs)
-        stmClose = do
-          mSock <- tryReadTMVar isOpenWrite
-          case mSock of
-            Nothing -> pure (Left Nothing)
-            Just sock -> do
-              _ <- takeTMVar closeQueue
-              pure (Left (Just sock))
-      e <- atomically $ stmClose `orElse` stmTx
-      case e of
-        Right (sock, bs) -> do
-          success <- (sendAll sock (doEncode bs) >> pure True) `catch` exHandlerTx
-          when success txLoop
-        Left (Just sock) -> do
-          void . atomically . tryTakeTMVar $ isOpenWrite
-          void . atomically . tryTakeTMVar $ isOpenRead
-          close sock `catch` exHandlerClose
-          onClosed ()
-        Left Nothing ->
-          txLoop
-
-    startTxLoop = liftIO $ do
-      mSock <- atomically $ tryReadTMVar isOpenWrite
-      forM_ mSock $ \_ -> void . forkIO $ txLoop
-
-
-  let
-    exHandlerRx :: IOException -> IO B.ByteString
-    exHandlerRx e = do
-      mSock <- atomically . tryReadTMVar $ isOpenRead
-      forM_ mSock $ \_ -> onError (SocketIOException e)
-      pure B.empty
-
-    shutdownRx = do
-      void . atomically $ tryTakeTMVar isOpenRead
-      onClosed ()
-
-    rxLoop decoder = do
-      mSock <- atomically $ tryReadTMVar isOpenRead
-      forM_ mSock $ \sock -> do
-        bs <- recv sock mxRx `catch` exHandlerRx
-
-        if B.null bs
-          then shutdownRx
-          else
-            runIncrementalDecoder
-              (onError . SocketDecodeError)
-              onRx
-              (const shutdownRx)
-              rxLoop
-              decoder
-              bs
-
-    startRxLoop = liftIO $ do
-      mSock <- atomically $ tryReadTMVar isOpenRead
-      forM_ mSock $ const . void . forkIO . rxLoop $ getDecoder
-
-  performEvent_ $ ffor eTx $ \payloads -> liftIO $ forM_ payloads $
-    atomically . writeTQueue payloadQueue
-
-  performEvent_ $ ffor eClose $ \_ ->
-    liftIO . atomically . putTMVar closeQueue $ ()
-
-  let
     start = liftIO $ do
-      void . atomically . tryPutTMVar isOpenRead $ initSock
-      void . atomically . tryPutTMVar isOpenWrite $ initSock
-      startTxLoop
-      startRxLoop
+      void $ forkIO txLoop
+      void $ forkIO rxLoop
       onOpen ()
-      pure ()
 
-  performEvent_ $ start <$ ePostBuild
+      where
+        txLoop =
+          let
+            stmClose sock = STM.tryTakeTMVar closeQueue $> Close sock
+            stmTx sock = STM.readTQueue payloadQueue >>= pure . Send sock
 
-  pure $ Socket eRx eOpen eError eClosed
+            loop =
+              atomically
+                (STM.readTMVar isOpen >>= (orElse <$> stmClose <*> stmTx))
+              >>= \case
+              Close sock -> do
+                void . atomically $ STM.takeTMVar isOpen
+                NS.close sock `catch` onError
+                onClosed ()
+              Send sock bs -> do
+                try (sendAll sock bs) >>= \case
+                  Left exc -> onError exc *> shutdown
+                  Right () -> pure ()
+                loop
+          in loop
+
+        rxLoop =
+          let
+            loop = do
+              mSock <- atomically $ STM.tryReadTMVar isOpen
+              for_ mSock $ \sock -> try (recv sock maxRx) >>= \case
+                Left exc -> onError exc *> shutdown
+                Right bs -> onRx bs *> loop
+          in loop
+
+        shutdown = void . atomically $ STM.tryPutTMVar closeQueue ()
+
+  performEvent_ $ ePostBuild $> start
+
+  performEvent_ $ eTx <&> \bs -> liftIO . atomically $
+    STM.tryReadTMVar isOpen >>= \case
+      Nothing -> pure ()
+      Just{} -> STM.writeTQueue payloadQueue bs
+
+  performEvent_ $ eClose $> liftIO (atomically $ STM.putTMVar closeQueue ())
+
+  pure $ Socket eRx eOpen eClosed eError
