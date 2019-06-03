@@ -18,7 +18,7 @@ module Main (main) where
 
 import           Control.Monad (void)
 import           Control.Monad.Fix (MonadFix)
-import           Control.Monad.Trans (MonadIO)
+import           Control.Monad.IO.Class (MonadIO)
 import           Data.ByteString (ByteString)
 import           Data.Function ((&))
 import           Data.Map (Map)

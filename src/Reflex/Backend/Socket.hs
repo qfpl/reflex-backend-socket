@@ -1,6 +1,5 @@
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE RecursiveDo         #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
 
@@ -46,6 +45,7 @@ import           Control.Lens.TH (makeLenses)
 import           Control.Monad.IO.Class (MonadIO(..))
 import           Control.Monad.STM (atomically, orElse)
 import           Data.ByteString (ByteString)
+import qualified Data.ByteString as B
 import           Data.Foldable (for_)
 import           Data.Functor (($>), (<&>), void)
 import qualified Network.Socket as NS
@@ -82,10 +82,6 @@ data Socket t = Socket
 
 $(makeLenses ''Socket)
 
-data TxStepResult
-  = Send NS.Socket ByteString
-  | Close NS.Socket
-
 -- | Wire a socket into the FRP network. You will likely use this to
 -- attach events to a socket that you just connected (from 'connect'),
 -- or a socket that you just accepted (from the '_aAcceptSocket' event
@@ -101,15 +97,15 @@ socket
      )
   => SocketConfig t
   -> m (Socket t)
-socket (SocketConfig initSock maxRx eTx eClose) = mdo
+socket (SocketConfig sock maxRx eTx eClose) = do
   (eRx, onRx) <- newTriggerEvent
   (eOpen, onOpen) <- newTriggerEvent
-  (eError, onError) <- newTriggerEvent
   (eClosed, onClosed) <- newTriggerEvent
+  (eError, onError) <- newTriggerEvent
 
   payloadQueue <- liftIO STM.newTQueueIO
   closeQueue <- liftIO STM.newEmptyTMVarIO
-  isOpen <- liftIO $ STM.newTMVarIO initSock
+  isOpen <- liftIO $ STM.newTMVarIO ()
 
   ePostBuild <- getPostBuild
 
@@ -122,18 +118,18 @@ socket (SocketConfig initSock maxRx eTx eClose) = mdo
       where
         txLoop =
           let
-            stmClose sock = STM.tryTakeTMVar closeQueue $> Close sock
-            stmTx sock = STM.readTQueue payloadQueue >>= pure . Send sock
+            stmClose = STM.readTMVar closeQueue $> Nothing
+            stmTx = STM.readTQueue payloadQueue >>= pure . Just
 
             loop =
               atomically
-                (STM.readTMVar isOpen >>= (orElse <$> stmClose <*> stmTx))
+                (STM.readTMVar isOpen *> (stmClose `orElse` stmTx))
               >>= \case
-              Close sock -> do
+              Nothing -> do
                 void . atomically $ STM.takeTMVar isOpen
                 NS.close sock `catch` onError
                 onClosed ()
-              Send sock bs -> do
+              Just bs -> do
                 try (sendAll sock bs) >>= \case
                   Left exc -> onError exc *> shutdown
                   Right () -> pure ()
@@ -144,9 +140,11 @@ socket (SocketConfig initSock maxRx eTx eClose) = mdo
           let
             loop = do
               mSock <- atomically $ STM.tryReadTMVar isOpen
-              for_ mSock $ \sock -> try (recv sock maxRx) >>= \case
+              for_ mSock $ \_ -> try (recv sock maxRx) >>= \case
                 Left exc -> onError exc *> shutdown
-                Right bs -> onRx bs *> loop
+                Right bs
+                  | B.null bs -> shutdown
+                  | otherwise -> onRx bs *> loop
           in loop
 
         shutdown = void . atomically $ STM.tryPutTMVar closeQueue ()
@@ -158,6 +156,7 @@ socket (SocketConfig initSock maxRx eTx eClose) = mdo
       Nothing -> pure ()
       Just{} -> STM.writeTQueue payloadQueue bs
 
-  performEvent_ $ eClose $> liftIO (atomically $ STM.putTMVar closeQueue ())
+  performEvent_ $ eClose <&> \_ ->
+    void . liftIO . atomically $ STM.tryPutTMVar closeQueue ()
 
   pure $ Socket eRx eOpen eClosed eError
