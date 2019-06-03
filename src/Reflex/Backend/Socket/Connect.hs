@@ -1,91 +1,68 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TemplateHaskell  #-}
+{-# LANGUAGE TypeApplications #-}
+
 {-|
-Copyright   : (c) 2018, Commonwealth Scientific and Industrial Research Organisation
+Copyright   : (c) 2018-2019, Commonwealth Scientific and Industrial Research Organisation
 License     : BSD3
 Maintainer  : dave.laing.80@gmail.com
 Stability   : experimental
 Portability : non-portable
 -}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TemplateHaskell #-}
-module Reflex.Backend.Socket.Connect (
-    ConnectConfig(..)
-  , ccHostname
-  , ccPort
-  , Connect(..)
-  , cSocket
-  , cError
-  , connect
-  ) where
 
-import Control.Monad (forM_, forM)
+module Reflex.Backend.Socket.Connect (connect) where
 
-import Control.Exception (IOException, catch)
-import Control.Monad.Trans (MonadIO(..))
+import           Control.Concurrent (forkIO)
+import           Control.Exception (IOException, onException, try)
+import           Control.Monad.Except (ExceptT(..), runExceptT, withExceptT)
+import           Control.Monad.Trans (MonadIO(..))
+import           Data.Foldable (asum)
+import           Data.Functor (($>), void)
+import           Data.Maybe (fromJust)
+import           Data.Monoid (Last(..))
 
-import Control.Lens
-
-import Network.Socket hiding (connect)
+import           Network.Socket (Socket, AddrInfo(..), defaultProtocol)
 import qualified Network.Socket as NS
 
-import Reflex
+import           Reflex
 
-data ConnectConfig =
-  ConnectConfig {
-    _ccHostname :: Maybe String
-  , _ccPort     :: Maybe String
-  }
-
-makeLenses ''ConnectConfig
-
-data Connect t =
-  Connect {
-    _cSocket :: Event t Socket
-  , _cError  :: Event t IOException
-  }
-
-makeLenses ''Connect
-
-connect ::
-  ( Reflex t
-  , PerformEvent t m
-  , TriggerEvent t m
-  , PostBuild t m
-  , MonadIO (Performable m)
-  , MonadIO m
-  ) =>
-  ConnectConfig ->
-  m (Connect t)
-connect (ConnectConfig mHost mPort) = do
-  (eSocket, onSocket) <- newTriggerEvent
-  (eError, onError)   <- newTriggerEvent
-
-  let
-    exHandlerGetAddr :: IOException -> IO [AddrInfo]
-    exHandlerGetAddr e = [] <$ onError e
-
-    getAddr :: IO (Maybe AddrInfo)
-    getAddr = do
-      addrInfos <- getAddrInfo Nothing mHost mPort `catch` exHandlerGetAddr
-      pure $ case addrInfos of
-        [] -> Nothing
-        h : _ -> Just h
-
-    exHandler :: IOException -> IO (Maybe Socket)
-    exHandler e = Nothing <$ onError e
-
-    connectAddr :: AddrInfo -> IO (Maybe Socket)
-    connectAddr h = do
-      sock <- socket (addrFamily h) Stream defaultProtocol
-      NS.connect sock (addrAddress h)
-      pure (Just sock)
-
-    start = liftIO $ do
-      mAddrInfo <- getAddr
-      forM_ mAddrInfo $ \h -> do
-        mSock <- connectAddr h `catch` exHandler
-        forM mSock onSocket
-
+-- | Connect to a remote endpoint. The connection happens in a
+-- background thread.
+connect
+  :: ( Reflex t
+     , PerformEvent t m
+     , TriggerEvent t m
+     , PostBuild t m
+     , MonadIO (Performable m)
+     , MonadIO m
+     )
+  => Maybe (NS.HostName)
+     -- ^ Host to connect to. If 'Nothing', connect via loopback.
+  -> NS.ServiceName
+     -- ^ Service (i.e., port). See @man 3 getaddrinfo@.
+  -> m (Event t (Either IOException Socket))
+     -- ^ This event will fire exactly once.
+connect mHost service = do
   ePostBuild <- getPostBuild
-  performEvent_ $ start <$ ePostBuild
+  performEventAsync $ ePostBuild $> \onRes -> void . liftIO . forkIO $
+    let
+      getAddrs :: ExceptT IOException IO [AddrInfo]
+      getAddrs = ExceptT . try $ NS.getAddrInfo Nothing mHost (Just service)
 
-  pure $ Connect eSocket eError
+      tryConnect :: AddrInfo -> ExceptT IOException IO Socket
+      tryConnect info = ExceptT . try $ do
+        sock <- NS.socket (addrFamily info) NS.Stream defaultProtocol
+        NS.connect sock (addrAddress info) `onException` NS.close sock
+        pure sock
+
+    in do
+      res <- runExceptT $ do
+        addrs <- getAddrs
+        let attempts = withExceptT (Last . Just) . tryConnect <$> addrs
+        -- fromJust is probably OK here, as getaddrinfo(3) is required
+        -- to return nonempty list of addrinfos.
+        --
+        -- See: http://pubs.opengroup.org/onlinepubs/9699919799/functions/getaddrinfo.html
+        -- And: https://github.com/haskell/network/issues/407
+        withExceptT (fromJust . getLast) $ asum attempts
+      onRes res
