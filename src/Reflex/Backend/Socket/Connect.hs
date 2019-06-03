@@ -16,10 +16,10 @@ import           Control.Concurrent (forkIO)
 import           Control.Exception (IOException, onException, try)
 import           Control.Monad.Except (ExceptT(..), runExceptT, withExceptT)
 import           Control.Monad.Trans (MonadIO(..))
-import           Data.Foldable (asum)
 import           Data.Functor (($>), void)
-import           Data.Maybe (fromJust)
-import           Data.Monoid (Last(..))
+import           Data.List.NonEmpty (NonEmpty, fromList)
+import           Data.Semigroup (Last(..))
+import           Data.Semigroup.Foldable (asum1)
 
 import           Network.Socket (Socket, AddrInfo(..), defaultProtocol)
 import qualified Network.Socket as NS
@@ -47,8 +47,14 @@ connect mHost service = do
   ePostBuild <- getPostBuild
   performEventAsync $ ePostBuild $> \onRes -> void . liftIO . forkIO $
     let
-      getAddrs :: ExceptT IOException IO [AddrInfo]
-      getAddrs = ExceptT . try $ NS.getAddrInfo Nothing mHost (Just service)
+      getAddrs :: ExceptT IOException IO (NonEmpty AddrInfo)
+      getAddrs = ExceptT . try $
+        -- fromList is probably OK here, as getaddrinfo(3) is required
+        -- to return a nonempty list of addrinfos.
+        --
+        -- See: http://pubs.opengroup.org/onlinepubs/9699919799/functions/getaddrinfo.html
+        -- And: https://github.com/haskell/network/issues/407
+        fromList <$> NS.getAddrInfo Nothing mHost (Just service)
 
       tryConnect :: AddrInfo -> ExceptT IOException IO Socket
       tryConnect info = ExceptT . try $ do
@@ -59,11 +65,6 @@ connect mHost service = do
     in do
       res <- runExceptT $ do
         addrs <- getAddrs
-        let attempts = withExceptT (Last . Just) . tryConnect <$> addrs
-        -- fromJust is probably OK here, as getaddrinfo(3) is required
-        -- to return a nonempty list of addrinfos.
-        --
-        -- See: http://pubs.opengroup.org/onlinepubs/9699919799/functions/getaddrinfo.html
-        -- And: https://github.com/haskell/network/issues/407
-        withExceptT (fromJust . getLast) $ asum attempts
+        let attempts = withExceptT Last . tryConnect <$> addrs
+        withExceptT getLast $ asum1 attempts
       onRes res
