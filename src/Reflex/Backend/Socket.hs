@@ -142,7 +142,8 @@ socket (SocketConfig sock maxRx eTx eClose) = do
               mBytes <- atomically $
                 STM.readTVar state >>= \case
                   Closed -> pure Nothing
-                  _ -> STM.tryReadTQueue payloadQueue
+                  Draining -> STM.tryReadTQueue payloadQueue
+                  Open -> STM.tryReadTQueue payloadQueue
                     >>= maybe STM.retry (pure . Just)
 
               case mBytes of
