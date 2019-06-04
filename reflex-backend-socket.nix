@@ -1,7 +1,6 @@
 { mkDerivation, base, binary, bytestring, containers, dependent-map
-, dependent-sum, microlens-th, mtl, network, reflex
-, reflex-basic-host, semigroupoids, stdenv, stm, these
-, transformers
+, dependent-sum, lens, mtl, network, reflex, reflex-basic-host
+, semigroupoids, stdenv, stm, these, transformers
 }:
 mkDerivation {
   pname = "reflex-backend-socket";
@@ -10,9 +9,9 @@ mkDerivation {
   isLibrary = true;
   isExecutable = true;
   libraryHaskellDepends = [
-    base binary bytestring containers dependent-map dependent-sum
-    microlens-th mtl network reflex reflex-basic-host semigroupoids stm
-    these transformers
+    base binary bytestring containers dependent-map dependent-sum lens
+    mtl network reflex reflex-basic-host semigroupoids stm these
+    transformers
   ];
   executableHaskellDepends = [
     base binary bytestring containers mtl network reflex
