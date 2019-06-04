@@ -28,7 +28,7 @@ module Reflex.Backend.Socket.Accept
 
     -- ** Accept
   , aAcceptSocket
-  , aClosed
+  , aClose
   , aError
   ) where
 
@@ -70,7 +70,7 @@ $(makeLenses ''AcceptConfig)
 data Accept t = Accept
   { _aAcceptSocket :: Event t (Socket, NS.SockAddr)
     -- ^ A new connection was accepted, including its remote address.
-  , _aClosed :: Event t ()
+  , _aClose :: Event t ()
     -- ^ The socket has closed. This will fire exactly once when the
     -- socket closes for any reason, including if your '_acClose'
     -- event fires or if the socket closes in response to a caught

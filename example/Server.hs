@@ -50,7 +50,7 @@ perConnection dSocket eTx = mdo
 
   let
     eRx = _sReceive so
-    eClosed = _sClosed so
+    eClosed = _sClose so
     eQuit = leftmost [void . ffilter (== "quit") $ eRx, eClosed]
     eOut = ffilter (/= "quit") eRx
 
@@ -93,7 +93,7 @@ go = mdo
 
     -- Quit if we end up with an empty map
     eQuitMap = void . ffilter id . updated $ Map.null <$> dSocketMap
-    eQuitListenClose = _aClosed a
+    eQuitListenClose = _aClose a
     eQuitListenError = void $ _aError a
     eQuit = leftmost [eQuitMap, eQuitListenClose, eQuitListenError]
   pure ((), eQuit)

@@ -34,7 +34,7 @@ module Reflex.Backend.Socket
   -- ** Socket
   , sReceive
   , sOpen
-  , sClosed
+  , sClose
   , sError
   ) where
 
@@ -55,11 +55,22 @@ import           Reflex
 import           Reflex.Backend.Socket.Accept
 import           Reflex.Backend.Socket.Connect (connect)
 
+-- | Holds the socket to wire into the FRP network, and events that
+-- drive it.
 data SocketConfig t = SocketConfig
   { _scInitSocket :: NS.Socket
-  , _scMaxRx      :: Int
-  , _scSend       :: Event t ByteString
-  , _scClose      :: Event t ()
+    -- ^ Socket to wrap.
+  , _scMaxRx :: Int
+    -- ^ Maximum number of bytes to read at a time.
+  , _scSend :: Event t ByteString
+    -- ^ Data to send out on this socket.
+  , _scClose :: Event t ()
+    -- ^ Ask to close the socket. The socket will stop trying to
+    -- receive data (and the '_sReceive' event will stop firing), and
+    -- the socket will be "drained": future events on '_scSend' will
+    -- be ignored, and it will close after writing all pending data.
+    -- If '_scSend' and '_scClose' fire in the same frame, the data
+    -- will nevertheless be queued for sending.
   }
 
 $(makeLenses ''SocketConfig)
@@ -68,14 +79,14 @@ $(makeLenses ''SocketConfig)
 data Socket t = Socket
   { _sReceive :: Event t ByteString
     -- ^ Data has arrived.
-  , _sOpen    :: Event t ()
-    -- ^ The socket is open, and its receive/send loops are running.
-  , _sClosed  :: Event t ()
+  , _sOpen :: Event t ()
+    -- ^ The socket has opened, and its receive/send loops are running.
+  , _sClose :: Event t ()
     -- ^ The socket has closed. This will fire exactly once when the
     -- socket closes for any reason, including if your '_scClose'
     -- event fires, the other end disconnects, or if the socket closes
     -- in response to a caught exception.
-  , _sError   :: Event t IOException
+  , _sError :: Event t IOException
     -- ^ An exception occurred. Treat the socket as closed after you
     -- see this. If the socket was open, you will see the '_sClosed'
     -- event fire as well, but not necessarily in the same frame.
