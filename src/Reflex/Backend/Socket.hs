@@ -40,13 +40,14 @@ module Reflex.Backend.Socket
 
 import           Control.Concurrent (forkIO)
 import qualified Control.Concurrent.STM as STM
-import           Control.Exception (IOException, catch, try)
+import           Control.Exception (IOException, try)
 import           Control.Monad.IO.Class (MonadIO(..))
-import           Control.Monad.STM (atomically, orElse)
+import           Control.Monad.STM (atomically)
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString as B
-import           Data.Foldable (for_)
 import           Data.Functor (($>), (<&>), void)
+import           Data.Functor.Apply ((<.>))
+import           Data.These
 import           Lens.Micro.TH (makeLenses)
 import qualified Network.Socket as NS
 import           Network.Socket.ByteString (sendAll, recv)
@@ -82,6 +83,15 @@ data Socket t = Socket
 
 $(makeLenses ''Socket)
 
+data SocketState
+  = Open
+    -- ^ Data flows in both directions
+  | Draining
+    -- ^ We've been asked to close, but will transmit all pending data
+    -- first (and not accept any more)
+  | Closed
+    -- ^ Hard close. Don't transmit pending data.
+
 -- | Wire a socket into the FRP network. You will likely use this to
 -- attach events to a socket that you just connected (from 'connect'),
 -- or a socket that you just accepted (from the '_aAcceptSocket' event
@@ -104,8 +114,7 @@ socket (SocketConfig sock maxRx eTx eClose) = do
   (eError, onError) <- newTriggerEvent
 
   payloadQueue <- liftIO STM.newTQueueIO
-  closeQueue <- liftIO STM.newEmptyTMVarIO
-  isOpen <- liftIO $ STM.newTMVarIO ()
+  state <- liftIO $ STM.newTVarIO Open
 
   ePostBuild <- getPostBuild
 
@@ -118,45 +127,54 @@ socket (SocketConfig sock maxRx eTx eClose) = do
       where
         txLoop =
           let
-            stmClose = STM.readTMVar closeQueue $> Nothing
-            stmTx = STM.readTQueue payloadQueue >>= pure . Just
+            loop = do
+              mBytes <- atomically $
+                STM.readTVar state >>= \case
+                  Closed -> pure Nothing
+                  _ -> STM.tryReadTQueue payloadQueue
+                    >>= maybe STM.retry (pure . Just)
 
-            loop =
-              atomically
-                (STM.readTMVar isOpen *> (stmClose `orElse` stmTx))
-              >>= \case
-              Nothing -> do
-                void . atomically $ STM.takeTMVar isOpen
-                NS.close sock `catch` onError
-                onClosed ()
-              Just bs -> do
-                try (sendAll sock bs) >>= \case
-                  Left exc -> onError exc *> shutdown
-                  Right () -> pure ()
-                loop
+              case mBytes of
+                Nothing -> onClosed ()
+                Just bs -> do
+                  try (sendAll sock bs) >>= \case
+                    Left exc -> onError exc *> shutdown
+                    Right () -> pure ()
+                  loop
           in loop
 
         rxLoop =
           let
             loop = do
-              mSock <- atomically $ STM.tryReadTMVar isOpen
-              for_ mSock $ \_ -> try (recv sock maxRx) >>= \case
-                Left exc -> onError exc *> shutdown
-                Right bs
-                  | B.null bs -> shutdown
-                  | otherwise -> onRx bs *> loop
+              atomically (STM.readTVar state) >>= \case
+                Open -> try (recv sock maxRx) >>= \case
+                  Left exc -> onError exc *> shutdown
+                  Right bs
+                    | B.null bs -> shutdown
+                    | otherwise -> onRx bs *> loop
+                _ -> pure ()
           in loop
 
-        shutdown = void . atomically $ STM.tryPutTMVar closeQueue ()
+        shutdown = void . atomically $ STM.writeTVar state Closed
 
   performEvent_ $ ePostBuild $> start
 
-  performEvent_ $ eTx <&> \bs -> liftIO . atomically $
-    STM.tryReadTMVar isOpen >>= \case
-      Nothing -> pure ()
-      Just{} -> STM.writeTQueue payloadQueue bs
+  -- If we see a tx and a close event in the same frame, we want to
+  -- process the tx before the close, so it doesn't get lost.
+  let
+    eTxOrClose :: Event t (These ByteString ())
+    eTxOrClose = leftmost
+      [ These <$> eTx <.> eClose
+      , This <$> eTx
+      , That <$> eClose
+      ]
 
-  performEvent_ $ eClose <&> \_ ->
-    void . liftIO . atomically $ STM.tryPutTMVar closeQueue ()
+    queueSend = STM.writeTQueue payloadQueue
+    queueClose = STM.writeTVar state Draining
+
+  performEvent_ $ eTxOrClose <&> \t -> liftIO . atomically $ case t of
+    This bs -> queueSend bs
+    That () -> queueClose
+    These bs () -> queueSend bs *> queueClose
 
   pure $ Socket eRx eOpen eClosed eError
