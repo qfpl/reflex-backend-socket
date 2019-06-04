@@ -156,14 +156,13 @@ socket (SocketConfig sock maxRx eTx eClose) = do
 
         rxLoop =
           let
-            loop = do
-              atomically (STM.readTVar state) >>= \case
-                Open -> try (recv sock maxRx) >>= \case
-                  Left exc -> onError exc *> shutdown
-                  Right bs
-                    | B.null bs -> shutdown
-                    | otherwise -> onRx bs *> loop
-                _ -> pure ()
+            loop = atomically (STM.readTVar state) >>= \case
+              Open -> try (recv sock maxRx) >>= \case
+                Left exc -> onError exc *> shutdown
+                Right bs
+                  | B.null bs -> shutdown
+                  | otherwise -> onRx bs *> loop
+              _ -> pure ()
           in loop
 
         shutdown = void . atomically $ STM.writeTVar state Closed
