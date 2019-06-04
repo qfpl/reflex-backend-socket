@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecursiveDo         #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -6,20 +7,15 @@
 
 module Main (main) where
 
-import Data.Functor ((<&>), void)
-
-import Control.Monad.IO.Class (liftIO)
-
-import qualified Data.ByteString as B
+import           Control.Monad.IO.Class (liftIO)
 import qualified Data.ByteString.Char8 as BC
-import Data.Maybe (isNothing)
-
-import Reflex
-
-import qualified Data.Map as Map
-import Reflex.Network
-import Reflex.Host.Basic
-import Reflex.Backend.Socket
+import           Data.Functor ((<&>), void)
+import           Data.Maybe (isNothing)
+import           Reflex
+import           Reflex.Backend.Socket
+import           Reflex.Host.Basic (basicHostForever, basicHostWithQuit)
+import           Reflex.Network (networkHold)
+import           System.Environment (getArgs)
 
 -- | Connect to a remote host, and quit as soon as something happens.
 connect1 :: IO ()
@@ -77,4 +73,8 @@ connect2 = basicHostWithQuit $ mdo
   pure ((), eQuit)
 
 main :: IO ()
-main = connect2
+main = getArgs >>= \case
+  ["accept1"] -> accept1
+  ["connect1"] -> connect1
+  ["connect2"] -> connect2
+  _ -> pure ()
