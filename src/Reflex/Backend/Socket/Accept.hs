@@ -36,12 +36,11 @@ module Reflex.Backend.Socket.Accept
 
 import           Control.Concurrent (forkIO)
 import           Control.Concurrent.STM (newTMVarIO, tryReadTMVar, tryTakeTMVar)
-import           Control.Exception (IOException, catch, onException, try)
+import           Control.Exception (IOException, onException, try)
 import           Control.Lens.TH (makeLenses)
 import           Control.Monad.Except (ExceptT(..), runExceptT, withExceptT)
 import           Control.Monad.STM (atomically)
 import           Control.Monad.Trans (MonadIO(..))
-import           Data.Foldable (traverse_)
 import           Data.Functor (($>), void)
 import           Data.List.NonEmpty (NonEmpty, fromList)
 import           Data.Semigroup.Foldable (asum1)
@@ -151,20 +150,18 @@ accept (AcceptConfig mHost mService listenQueue eClose) = do
 
         acceptLoop sock =
           let
-            exHandlerAccept :: IOException -> IO (Maybe (Socket, NS.SockAddr))
+            exHandlerAccept :: IOException -> IO ()
             exHandlerAccept e = do
               void . atomically $ tryTakeTMVar isOpen
-              Nothing <$ onError e
+              onError e
           in do
             atomically (tryReadTMVar isOpen) >>= \case
               Nothing -> do
                 NS.close sock
                 onClosed ()
               Just () -> do
-                (Just <$> NS.accept sock) `catch` exHandlerAccept
-                  >>= traverse_ onAccept
+                try (NS.accept sock) >>= either exHandlerAccept onAccept
                 acceptLoop sock
-
 
   ePostBuild <- getPostBuild
   performEvent $ ePostBuild $> start
