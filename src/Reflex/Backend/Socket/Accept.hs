@@ -18,8 +18,9 @@ module Reflex.Backend.Socket.Accept
     -- * Listen Socket Configuration
   , AcceptConfig(..)
 
-    -- * Output Events
+    -- * Results of @accept@
   , Accept(..)
+  , AcceptError(..)
 
     -- * Lenses
     -- ** AcceptConfig
@@ -33,6 +34,10 @@ module Reflex.Backend.Socket.Accept
   , aAcceptSocket
   , aClose
   , aError
+
+    -- ** AcceptError
+  , _GetAddrInfoError
+  , _BindError
   ) where
 
 import           Control.Concurrent (forkIO)
@@ -90,13 +95,13 @@ data Accept t = Accept
 
 $(makeLenses ''Accept)
 
--- | If 'accept' fails, you'll have one of these to find out why.
+-- | If 'accept' fails, you'll inspect one of these to find out why.
 data AcceptError
   = GetAddrInfoError IOException
     -- ^ Call to 'getAddrInfo' failed.
   | BindError (NonEmpty (AddrInfo, IOException))
-    -- ^ We failed to bind any 'AddrInfo' we were given, and the
-    -- exception thrown each time we tried.
+    -- ^ We failed to bind any 'AddrInfo' we were given, and here are
+    -- the corresponding exceptions each time we tried.
   deriving (Eq, Generic, Show)
 
 $(makePrisms ''AcceptError)
