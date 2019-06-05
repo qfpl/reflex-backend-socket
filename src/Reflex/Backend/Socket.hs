@@ -44,10 +44,10 @@ import           Control.Exception (IOException, try)
 import           Control.Lens.TH (makeLenses)
 import           Control.Monad.IO.Class (MonadIO(..))
 import           Control.Monad.STM (atomically)
+import           Data.Align (align)
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import           Data.Functor (($>), (<&>), void)
-import           Data.Functor.Apply ((<.>))
 import           Data.These
 import qualified Network.Socket as NS
 import           Network.Socket.ByteString (sendAll, recv)
@@ -174,11 +174,7 @@ socket (SocketConfig sock maxRx eTx eClose) = do
   -- process the tx before the close, so it doesn't get lost.
   let
     eTxOrClose :: Event t (These ByteString ())
-    eTxOrClose = leftmost
-      [ These <$> eTx <.> eClose
-      , This <$> eTx
-      , That <$> eClose
-      ]
+    eTxOrClose = align eTx eClose
 
     queueSend bs = STM.readTVar state >>= \case
       Open -> STM.writeTQueue payloadQueue bs
