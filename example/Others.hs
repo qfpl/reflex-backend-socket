@@ -11,6 +11,7 @@ import           Control.Monad.IO.Class (liftIO)
 import qualified Data.ByteString.Char8 as BC
 import           Data.Functor ((<&>), void)
 import           Data.Maybe (isNothing)
+import qualified Network.Socket as NS
 import           Reflex
 import           Reflex.Backend.Socket
 import           Reflex.Host.Basic (basicHostForever, basicHostWithQuit)
@@ -33,7 +34,7 @@ connect1 = basicHostWithQuit $ do
 accept1 :: IO ()
 accept1 = basicHostForever $ do
   (eListenError, eAccept) <- fanEither <$> accept
-    (AcceptConfig (Just "127.0.0.1") (Just "9000") 1 never)
+    (AcceptConfig (Just "127.0.0.1") (Just "9000") 1 [(NS.ReuseAddr, 1)] never)
 
   eNewClient <- switchHold never $ _aAcceptSocket <$> eAccept
   eListenClosed <- switchHold never $ _aClose <$> eAccept

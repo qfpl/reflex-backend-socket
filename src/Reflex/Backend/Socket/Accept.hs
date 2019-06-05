@@ -26,6 +26,7 @@ module Reflex.Backend.Socket.Accept
   , acHostname
   , acService
   , acListenQueue
+  , acSocketOptions
   , acClose
 
     -- ** Accept
@@ -61,6 +62,10 @@ data AcceptConfig t = AcceptConfig
   , _acListenQueue :: Int
     -- ^ The length of the "pending connections" queue. See the
     -- <https://linux.die.net/man/2/listen manpage for listen>.
+  , _acSocketOptions :: [(NS.SocketOption, Int)]
+    -- ^ List of socket options, passed one at a time to
+    -- 'NS.setSocketOption'. Many people will want
+    -- @[('NS.ReuseAddr', 1)]@ here.
   , _acClose :: Event t ()
     -- ^ Close the listen socket when this event fires. If you plan to
     -- run forever, use 'never'.
@@ -109,7 +114,7 @@ accept
   => AcceptConfig t
   -> m (Event t (Either AcceptError (Accept t)))
      -- ^ This event will fire exactly once.
-accept (AcceptConfig mHost mService listenQueue eClose) = do
+accept (AcceptConfig mHost mService listenQueue options eClose) = do
   (eAccept, onAccept) <- newTriggerEvent
   (eClosed, onClosed) <- newTriggerEvent
   (eError, onError) <- newTriggerEvent
@@ -143,7 +148,7 @@ accept (AcceptConfig mHost mService listenQueue eClose) = do
             tryListen info = withExceptT (pure . (info,)) . ExceptT . try $ do
               sock <- NS.socket (addrFamily info) NS.Stream NS.defaultProtocol
               (`onException` NS.close sock) $ do
-                NS.setSocketOption sock NS.ReuseAddr 1
+                traverse_ (uncurry $ NS.setSocketOption sock) options
                 NS.bind sock (addrAddress info)
                 NS.listen sock listenQueue
               pure sock

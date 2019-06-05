@@ -64,8 +64,8 @@ perConnection dSocket eTx = mdo
 
 go :: forall t m. BasicGuestConstraints t m => BasicGuest t m ((), Event t ())
 go = mdo
-  (eListenError, eAccept) <- fanEither
-    <$> accept (AcceptConfig (Just "127.0.0.1") (Just "9000") 1 eQuit)
+  (eListenError, eAccept) <- fanEither <$> accept
+    (AcceptConfig (Just "127.0.0.1") (Just "9000") 1 [(NS.ReuseAddr, 1)] eQuit)
 
   eNewClient <- switchHold never $ fmap fst . _aAcceptSocket <$> eAccept
   eListenClose <- switchHold never $ _aClose <$> eAccept
