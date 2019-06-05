@@ -178,7 +178,10 @@ socket (SocketConfig sock maxRx eTx eClose) = do
     queueSend bs = STM.readTVar state >>= \case
       Open -> STM.writeTQueue payloadQueue bs
       _ -> pure ()
-    queueClose = STM.writeTVar state Draining
+
+    queueClose = STM.modifyTVar state $ \case
+      Open -> Draining
+      s -> s
 
   performEvent_ $ eTxOrClose <&> \t -> liftIO . atomically $ case t of
     This bs -> queueSend bs
