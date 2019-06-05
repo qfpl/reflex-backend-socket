@@ -76,12 +76,11 @@ data Accept t = Accept
     -- ^ The socket has closed. This will fire exactly once when the
     -- socket closes for any reason, including if your '_acClose'
     -- event fires or if the socket closes in response to a caught
-    -- exception caught.
+    -- exception.
   , _aError :: Event t IOException
     -- ^ An exception occurred. Treat the socket as closed after you
-    -- see this. If the socket was open, you will see the
-    -- '_aListenClosed' event fire as well, but not necessarily in the
-    -- same frame.
+    -- see this. You will see the '_aClose' event fire as well, but
+    -- not necessarily in the same frame.
   }
 
 $(makeLenses ''Accept)
