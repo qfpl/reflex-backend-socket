@@ -49,8 +49,8 @@ connect mHost service = do
     let
       getAddrs :: ExceptT IOException IO (NonEmpty AddrInfo)
       getAddrs = ExceptT . try $
-        -- fromList is probably OK here, as getaddrinfo(3) is required
-        -- to return a nonempty list of addrinfos.
+        -- fromList is OK here, as getaddrinfo(3) is required to
+        -- return a nonempty list of addrinfos.
         --
         -- See: http://pubs.opengroup.org/onlinepubs/9699919799/functions/getaddrinfo.html
         -- And: https://github.com/haskell/network/issues/407

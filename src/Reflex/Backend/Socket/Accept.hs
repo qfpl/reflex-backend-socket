@@ -35,12 +35,13 @@ module Reflex.Backend.Socket.Accept
   ) where
 
 import           Control.Concurrent (forkIO)
-import           Control.Concurrent.STM (newTMVarIO, tryReadTMVar, tryTakeTMVar)
+import qualified Control.Concurrent.STM as STM
 import           Control.Exception (IOException, onException, try)
-import           Control.Lens.TH (makeLenses)
+import           Control.Lens.TH (makeLenses, makePrisms)
 import           Control.Monad.Except (ExceptT(..), runExceptT, withExceptT)
 import           Control.Monad.STM (atomically)
 import           Control.Monad.Trans (MonadIO(..))
+import           Data.Foldable (traverse_)
 import           Data.Functor (($>), void)
 import           Data.List.NonEmpty (NonEmpty, fromList)
 import           Data.Semigroup.Foldable (asum1)
@@ -85,10 +86,16 @@ data Accept t = Accept
 
 $(makeLenses ''Accept)
 
+-- | If 'accept' fails, you'll have one of these to find out why.
 data AcceptError
   = GetAddrInfoError IOException
+    -- ^ Call to 'getAddrInfo' failed.
   | BindError (NonEmpty (AddrInfo, IOException))
+    -- ^ We failed to bind any 'AddrInfo' we were given, and the
+    -- exception thrown each time we tried.
   deriving (Eq, Generic, Show)
+
+$(makePrisms ''AcceptError)
 
 -- | Create a listening socket. Sockets are accepted in a background
 -- thread.
@@ -108,15 +115,14 @@ accept (AcceptConfig mHost mService listenQueue eClose) = do
   (eClosed, onClosed) <- newTriggerEvent
   (eError, onError) <- newTriggerEvent
 
-  isOpen <- liftIO $ newTMVarIO ()
-
-  performEvent_ $ eClose $> liftIO (void . atomically $ tryTakeTMVar isOpen)
+  isOpen <- liftIO $ STM.newEmptyTMVarIO
 
   let
     start = liftIO $ makeListenSocket >>= \case
       Left exc -> pure $ Left exc
       Right sock -> do
-        void . forkIO $ acceptLoop sock
+        atomically $ STM.putTMVar isOpen sock
+        void $ forkIO acceptLoop
         pure . Right $ Accept eAccept eClosed eError
 
       where
@@ -124,8 +130,8 @@ accept (AcceptConfig mHost mService listenQueue eClose) = do
           let
             getAddrs :: ExceptT AcceptError IO (NonEmpty AddrInfo)
             getAddrs = withExceptT GetAddrInfoError . ExceptT . try $
-              -- fromList is probably OK here, as getaddrinfo(3) is required
-              -- to return a nonempty list of addrinfos.
+              -- fromList is OK here, as getaddrinfo(3) is required to
+              -- return a nonempty list of addrinfos.
               --
               -- See: http://pubs.opengroup.org/onlinepubs/9699919799/functions/getaddrinfo.html
               -- And: https://github.com/haskell/network/issues/407
@@ -148,20 +154,25 @@ accept (AcceptConfig mHost mService listenQueue eClose) = do
             let attempts = tryListen <$> addrs
             withExceptT BindError $ asum1 attempts
 
-        acceptLoop sock =
+        acceptLoop =
           let
-            exHandlerAccept :: IOException -> IO ()
-            exHandlerAccept e = do
-              void . atomically $ tryTakeTMVar isOpen
-              onError e
+            -- If we receive an exception when trying to accept, check
+            -- the TMVar that's meant to hold our socket. If it's
+            -- empty, then 'eClose' must have fired (and the socket
+            -- closed under us) and we should go quietly. Otherwise,
+            -- close the socket ourselves and signal 'eError'.
+            exHandlerAccept e = atomically (STM.tryReadTMVar isOpen)
+              >>= maybe (pure ()) (const $ close *> onError e)
           in do
-            atomically (tryReadTMVar isOpen) >>= \case
-              Nothing -> do
-                NS.close sock
-                onClosed ()
-              Just () -> do
+            atomically (STM.tryReadTMVar isOpen) >>= \case
+              Nothing -> onClosed ()
+              Just sock -> do
                 try (NS.accept sock) >>= either exHandlerAccept onAccept
-                acceptLoop sock
+                acceptLoop
+
+    close = atomically (STM.tryTakeTMVar isOpen) >>= traverse_ NS.close
+
+  performEvent_ $ eClose $> liftIO close
 
   ePostBuild <- getPostBuild
   performEvent $ ePostBuild $> start
