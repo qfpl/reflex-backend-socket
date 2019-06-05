@@ -32,11 +32,18 @@ connect1 = basicHostWithQuit $ do
 -- nothing with arriving connections, so will leak FDs.
 accept1 :: IO ()
 accept1 = basicHostForever $ do
-  a <- accept $ AcceptConfig (Just "127.0.0.1") (Just "9000") 1 never
+  (eListenError, eAccept) <- fanEither <$> accept
+    (AcceptConfig (Just "127.0.0.1") (Just "9000") 1 never)
 
-  performEvent_ $ (liftIO . putStrLn $ "Listen closed") <$ _aClose a
-  performEvent_ $ (liftIO . putStrLn $ "Connected") <$ _aAcceptSocket a
-  performEvent_ $ liftIO . print <$> _aError a
+  eNewClient <- switchHold never $ _aAcceptSocket <$> eAccept
+  eListenClosed <- switchHold never $ _aClose <$> eAccept
+  eAcceptError <- switchHold never $ _aError <$> eAccept
+
+  performEvent_ $
+    (liftIO . putStrLn $ "Error starting listen socket") <$ eListenError
+  performEvent_ $ (liftIO . putStrLn $ "Listen closed") <$ eListenClosed
+  performEvent_ $ (liftIO . putStrLn $ "Connected") <$ eNewClient
+  performEvent_ $ liftIO . print <$> eAcceptError
 
   pure ()
 

@@ -18,9 +18,10 @@ module Main (main) where
 
 import           Control.Monad (void)
 import           Control.Monad.Fix (MonadFix)
-import           Control.Monad.IO.Class (MonadIO)
+import           Control.Monad.IO.Class (MonadIO(..))
 import           Data.ByteString (ByteString)
 import           Data.Function ((&))
+import           Data.Functor ((<&>))
 import           Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Network.Socket as NS
@@ -58,10 +59,19 @@ perConnection dSocket eTx = mdo
 
 go :: forall t m. BasicGuestConstraints t m => BasicGuest t m ((), Event t ())
 go = mdo
-  a <- accept $ AcceptConfig (Just "127.0.0.1") (Just "9000") 1 eQuit
+  (eListenError, eAccept) <- fanEither
+    <$> accept (AcceptConfig (Just "127.0.0.1") (Just "9000") 1 eQuit)
 
-  let eAccept = fst <$> _aAcceptSocket a
-  eAdds :: Event t (Integer, NS.Socket) <- numberOccurrences eAccept
+  eNewClient <- switchHold never $ fmap fst . _aAcceptSocket <$> eAccept
+  eListenClose <- switchHold never $ _aClose <$> eAccept
+  eAcceptError <- switchHold never $ _aError <$> eAccept
+
+  performEvent_ $ eListenError
+    <&> liftIO . putStrLn . ("Listen error: " <>) . show
+  performEvent_ $ eAcceptError
+    <&> liftIO . putStrLn . ("Error accepting: " <>) .show
+
+  eAdds :: Event t (Integer, NS.Socket) <- numberOccurrences eNewClient
 
   -- Maintain a map of all open sockets, indexed by their occurrence number.
   dSocketMap <- foldDyn ($) Map.empty . mergeWith (.) $
@@ -91,11 +101,12 @@ go = mdo
       & switchDyn
       & fmap Map.keys
 
-    -- Quit if we end up with an empty map
     eQuitMap = void . ffilter id . updated $ Map.null <$> dSocketMap
-    eQuitListenClose = _aClose a
-    eQuitListenError = void $ _aError a
-    eQuit = leftmost [eQuitMap, eQuitListenClose, eQuitListenError]
+    eQuit = leftmost
+      [ void eListenError -- Couldn't open listen socket
+      , eQuitMap -- Nobody is connected
+      , eListenClose -- Our listen socket was closed
+      ]
   pure ((), eQuit)
 
 main :: IO ()

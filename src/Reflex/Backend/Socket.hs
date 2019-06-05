@@ -127,8 +127,6 @@ socket (SocketConfig sock maxRx eTx eClose) = do
   payloadQueue <- liftIO STM.newTQueueIO
   state <- liftIO $ STM.newTVarIO Open
 
-  ePostBuild <- getPostBuild
-
   let
     start = liftIO $ do
       void $ forkIO txLoop
@@ -168,6 +166,7 @@ socket (SocketConfig sock maxRx eTx eClose) = do
 
         shutdown = void . atomically $ STM.writeTVar state Closed
 
+  ePostBuild <- getPostBuild
   performEvent_ $ ePostBuild $> start
 
   -- If we see a tx and a close event in the same frame, we want to

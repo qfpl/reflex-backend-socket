@@ -1,6 +1,8 @@
+{-# LANGUAGE DeriveGeneric    #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase       #-}
 {-# LANGUAGE TemplateHaskell  #-}
+{-# LANGUAGE TupleSections    #-}
 
 {-|
 Copyright   : (c) 2018-2019, Commonwealth Scientific and Industrial Research Organisation
@@ -42,8 +44,8 @@ import           Control.Monad.Trans (MonadIO(..))
 import           Data.Foldable (traverse_)
 import           Data.Functor (($>), void)
 import           Data.List.NonEmpty (NonEmpty, fromList)
-import           Data.Semigroup (Last(..))
 import           Data.Semigroup.Foldable (asum1)
+import           GHC.Generics (Generic)
 import           Network.Socket (AddrInfo(..), AddrInfoFlag(..), Socket)
 import qualified Network.Socket as NS
 import           Reflex
@@ -84,6 +86,11 @@ data Accept t = Accept
 
 $(makeLenses ''Accept)
 
+data AcceptError
+  = GetAddrInfoError IOException
+  | BindError (NonEmpty (AddrInfo, IOException))
+  deriving (Eq, Generic, Show)
+
 -- | Create a listening socket. Sockets are accepted in a background
 -- thread.
 accept
@@ -95,7 +102,8 @@ accept
      , MonadIO m
      )
   => AcceptConfig t
-  -> m (Accept t)
+  -> m (Event t (Either AcceptError (Accept t)))
+     -- ^ This event will fire exactly once.
 accept (AcceptConfig mHost mService listenQueue eClose) = do
   (eAccept, onAccept) <- newTriggerEvent
   (eClosed, onClosed) <- newTriggerEvent
@@ -103,19 +111,20 @@ accept (AcceptConfig mHost mService listenQueue eClose) = do
 
   isOpen <- liftIO $ newTMVarIO ()
 
-  ePostBuild <- getPostBuild
+  performEvent_ $ eClose $> liftIO (void . atomically $ tryTakeTMVar isOpen)
 
   let
-    start = liftIO $ do
-      makeListenSocket >>= \case
-        Left exc -> onError exc
-        Right sock -> void . forkIO $ acceptLoop sock
+    start = liftIO $ makeListenSocket >>= \case
+      Left exc -> pure $ Left exc
+      Right sock -> do
+        void . forkIO $ acceptLoop sock
+        pure . Right $ Accept eAccept eClosed eError
 
       where
         makeListenSocket =
           let
-            getAddrs :: ExceptT IOException IO (NonEmpty AddrInfo)
-            getAddrs = ExceptT . try $
+            getAddrs :: ExceptT AcceptError IO (NonEmpty AddrInfo)
+            getAddrs = withExceptT GetAddrInfoError . ExceptT . try $
               -- fromList is probably OK here, as getaddrinfo(3) is required
               -- to return a nonempty list of addrinfos.
               --
@@ -124,8 +133,10 @@ accept (AcceptConfig mHost mService listenQueue eClose) = do
               fromList <$> NS.getAddrInfo (Just passiveHints) mHost mService
               where passiveHints = NS.defaultHints { addrFlags = [AI_PASSIVE] }
 
-            tryListen :: AddrInfo -> ExceptT IOException IO Socket
-            tryListen info = ExceptT . try $ do
+            tryListen
+              :: AddrInfo
+              -> ExceptT (NonEmpty (AddrInfo, IOException)) IO Socket
+            tryListen info = withExceptT (pure . (info,)) . ExceptT . try $ do
               sock <- NS.socket (addrFamily info) NS.Stream NS.defaultProtocol
               (`onException` NS.close sock) $ do
                 NS.setSocketOption sock NS.ReuseAddr 1
@@ -135,8 +146,8 @@ accept (AcceptConfig mHost mService listenQueue eClose) = do
 
           in runExceptT $ do
             addrs <- getAddrs
-            let attempts = withExceptT Last . tryListen <$> addrs
-            withExceptT getLast $ asum1 attempts
+            let attempts = tryListen <$> addrs
+            withExceptT BindError $ asum1 attempts
 
         acceptLoop sock =
           let
@@ -154,8 +165,6 @@ accept (AcceptConfig mHost mService listenQueue eClose) = do
                   >>= traverse_ onAccept
                 acceptLoop sock
 
-  performEvent_ $ ePostBuild $> start
 
-  performEvent_ $ eClose $> liftIO (void . atomically $ tryTakeTMVar isOpen)
-
-  pure $ Accept eAccept eClosed eError
+  ePostBuild <- getPostBuild
+  performEvent $ ePostBuild $> start
