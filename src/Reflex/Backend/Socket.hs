@@ -21,10 +21,6 @@ module Reflex.Backend.Socket
     -- * Socket Output Events
   , Socket(..)
 
-    -- * Convenience Re-Exports
-  , connect
-  , module Reflex.Backend.Socket.Accept
-
   -- * Lenses
   -- ** SocketConfig
   , scInitSocket
@@ -53,8 +49,6 @@ import           Data.These
 import qualified Network.Socket as NS
 import           Network.Socket.ByteString (sendAll, recv)
 import           Reflex
-import           Reflex.Backend.Socket.Accept
-import           Reflex.Backend.Socket.Connect (connect)
 
 -- | Holds the socket to wire into the FRP network, and events that
 -- drive it.
@@ -105,9 +99,11 @@ data SocketState
     -- ^ Hard close. Don't transmit pending data.
 
 -- | Wire a socket into the FRP network. You will likely use this to
--- attach events to a socket that you just connected (from 'connect'),
--- or a socket that you just accepted (from the '_aAcceptSocket' event
--- you got when you called 'accept').
+-- attach events to a socket that you just connected (from
+-- 'Reflex.Backend.Socket.Connect.connect'), or a socket that you just
+-- accepted (from the 'Reflex.Backend.Socket.Accept._aAcceptSocket'
+-- event you got when you called
+-- 'Reflex.Backend.Socket.Accept.accept').
 socket
   :: forall t m.
      ( Reflex t

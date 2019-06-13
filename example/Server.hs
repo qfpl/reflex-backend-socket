@@ -30,8 +30,9 @@ import qualified Data.Map as Map
 import qualified Network.Socket as NS
 import           Reflex
 import           Reflex.Backend.Socket
+import           Reflex.Backend.Socket.Accept
 import           Reflex.Host.Basic
-import System.IO.Error
+import           System.IO.Error
 
 type ServerCxt t m =
   ( Reflex t

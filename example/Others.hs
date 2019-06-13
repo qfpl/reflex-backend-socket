@@ -14,6 +14,8 @@ import           Data.Maybe (isNothing)
 import qualified Network.Socket as NS
 import           Reflex
 import           Reflex.Backend.Socket
+import           Reflex.Backend.Socket.Accept
+import           Reflex.Backend.Socket.Connect
 import           Reflex.Host.Basic (basicHostForever, basicHostWithQuit)
 import           Reflex.Network (networkHold)
 import           System.Environment (getArgs)

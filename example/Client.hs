@@ -20,6 +20,7 @@ import qualified Data.ByteString.Char8 as BC
 import qualified Network.Socket as NS
 import           Reflex
 import           Reflex.Backend.Socket
+import           Reflex.Backend.Socket.Connect
 import           Reflex.Host.Basic
 import           Reflex.Workflow
 

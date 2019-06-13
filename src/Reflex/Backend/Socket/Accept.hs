@@ -22,7 +22,7 @@ module Reflex.Backend.Socket.Accept
   , Accept(..)
   , AcceptError(..)
 
-    -- * Lenses
+    -- * Optics
     -- ** AcceptConfig
   , acHostname
   , acService
