@@ -2,6 +2,7 @@
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
+{-# LANGUAGE TypeApplications    #-}
 
 {-|
 Copyright   : (c) 2018-2019, Commonwealth Scientific and Industrial Research Organisation
@@ -131,6 +132,7 @@ socket (SocketConfig sock maxRx eTx eClose) = do
     start = liftIO $ do
       void $ forkIO txLoop
       void $ forkIO rxLoop
+      void $ forkIO closeSentinel
       onOpen ()
 
       where
@@ -145,12 +147,11 @@ socket (SocketConfig sock maxRx eTx eClose) = do
                     >>= maybe STM.retry (pure . Just)
 
               case mBytes of
-                Nothing -> onClosed ()
-                Just bs -> do
+                Nothing -> shutdown
+                Just bs ->
                   try (sendAll sock bs) >>= \case
                     Left exc -> onError exc *> shutdown
-                    Right () -> pure ()
-                  loop
+                    Right () -> loop
           in loop
 
         rxLoop =
@@ -163,6 +164,14 @@ socket (SocketConfig sock maxRx eTx eClose) = do
                   | otherwise -> onRx bs *> loop
               _ -> pure ()
           in loop
+
+        closeSentinel = do
+          atomically $ STM.readTVar state >>= \case
+            Closed -> pure ()
+            _ -> STM.retry
+
+          void . (try @IOException) $ NS.close sock
+          onClosed ()
 
         shutdown = void . atomically $ STM.writeTVar state Closed
 
