@@ -196,7 +196,7 @@ socket (SocketConfig sock maxRx eTx eClose) = do
       Open -> Draining
       s -> s
 
-  performEvent_ $ eTxOrClose <&> \t -> liftIO . atomically $ case t of
+  performEvent_ $ eTxOrClose <&> liftIO . atomically . \case
     This bs -> queueSend bs
     That () -> queueClose
     These bs () -> queueSend bs *> queueClose
