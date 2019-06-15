@@ -155,7 +155,7 @@ accept (AcceptConfig mHost mService listenQueue options eClose) = do
             -- close the socket ourselves and signal 'eError'.
             exHandlerAccept e = atomically (STM.tryReadTMVar isOpen)
               >>= maybe (pure ()) (const $ close *> onError e)
-          in do
+          in
             atomically (STM.tryReadTMVar isOpen) >>= \case
               Nothing -> onClosed ()
               Just sock -> do

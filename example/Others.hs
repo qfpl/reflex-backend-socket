@@ -11,11 +11,10 @@ import           Control.Monad.IO.Class (liftIO)
 import qualified Data.ByteString.Char8 as BC
 import           Data.Functor ((<&>), void)
 import           Data.Maybe (isNothing)
+import           Data.Witherable (catMaybes)
 import qualified Network.Socket as NS
 import           Reflex
 import           Reflex.Backend.Socket
-import           Reflex.Backend.Socket.Accept
-import           Reflex.Backend.Socket.Connect
 import           Reflex.Host.Basic (basicHostForever, basicHostWithQuit)
 import           Reflex.Network (networkHold)
 import           System.Environment (getArgs)
@@ -64,12 +63,12 @@ connect2 = basicHostWithQuit $ mdo
     , pure Nothing <$ eClosed
     ]
 
-  eOpen <- switchHold never . fmap _sOpen . mapMaybe id $ updated dSocket
+  eOpen <- switchHold never . fmap _sOpen . catMaybes $ updated dSocket
   let eTx = "Hi" <$ eOpen
 
-  eClosed <- switchHold never . fmap _sClose . mapMaybe id $ updated dSocket
-  eRx <- switchHold never . fmap _sReceive . mapMaybe id $ updated dSocket
-  eSockError <- switchHold never . fmap _sError . mapMaybe id $ updated dSocket
+  eClosed <- switchHold never . fmap _sClose . catMaybes $ updated dSocket
+  eRx <- switchHold never . fmap _sReceive . catMaybes $ updated dSocket
+  eSockError <- switchHold never . fmap _sError . catMaybes $ updated dSocket
 
   performEvent_ $ liftIO . BC.putStrLn <$> eRx
   performEvent_ $ liftIO . print <$> eSockError

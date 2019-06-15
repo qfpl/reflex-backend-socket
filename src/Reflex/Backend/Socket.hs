@@ -15,26 +15,26 @@ Portability : non-portable
 module Reflex.Backend.Socket
   ( socket
 
-    -- * Socket Configuration
+    -- * Socket configuration
   , SocketConfig(..)
 
-    -- * Socket Output Events
+    -- * Socket output events
   , Socket(..)
 
     -- * Lenses
-    -- ** SocketConfig
+    -- ** 'SocketConfig'
   , scInitSocket
   , scMaxRx
   , scSend
   , scClose
 
-    -- ** Socket
+    -- ** 'Socket'
   , sReceive
   , sOpen
   , sClose
   , sError
 
-    -- * Convenience Re-Exports
+    -- * Convenience re-exports
   , module Reflex.Backend.Socket.Accept
   , module Reflex.Backend.Socket.Connect
   , module Reflex.Backend.Socket.Error
@@ -174,7 +174,7 @@ socket (SocketConfig sock maxRx eTx eClose) = do
             Closed -> pure ()
             _ -> STM.retry
 
-          void . (try @IOException) $ NS.close sock
+          void . try @IOException $ NS.close sock
           onClosed ()
 
         shutdown = void . atomically $ STM.writeTVar state Closed
