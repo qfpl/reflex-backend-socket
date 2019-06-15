@@ -1,37 +1,27 @@
+{-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
+
 {-|
-Copyright   : (c) 2018, Commonwealth Scientific and Industrial Research Organisation
+Copyright   : (c) 2018-2019, Commonwealth Scientific and Industrial Research Organisation
 License     : BSD3
 Maintainer  : dave.laing.80@gmail.com
 Stability   : experimental
 Portability : non-portable
 -}
-{-# LANGUAGE RecursiveDo #-}
-{-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE FlexibleContexts #-}
-module Main (
-    main
-  ) where
 
-import Control.Monad (void, forever)
-import Control.Monad.Fix (MonadFix)
-import Control.Concurrent (forkIO)
+module Main (main) where
 
-import Control.Monad.Trans (MonadIO(..))
-
-import qualified Network.Socket as NS
-
+import           Control.Concurrent (forkIO)
+import           Control.Monad (void, forever)
+import           Control.Monad.Fix (MonadFix)
+import           Control.Monad.IO.Class (MonadIO(..))
 import qualified Data.ByteString.Char8 as BC
-
-import Reflex
-import Reflex.Workflow
-
-import Reflex.Host.Basic
-import Reflex.Backend.Socket
-
-main :: IO ()
-main = basicHostWithQuit $ do
-  deQuit <- workflow unconnected
-  pure ((), switchDyn deQuit)
+import qualified Network.Socket as NS
+import           Reflex
+import           Reflex.Backend.Socket
+import           Reflex.Host.Basic
+import           Reflex.Workflow
 
 type ClientCxt t m =
   ( Reflex t
@@ -45,24 +35,25 @@ type ClientCxt t m =
 
 unconnected :: ClientCxt t m => Workflow t m (Event t ())
 unconnected = Workflow $ do
-  c <- connect $ ConnectConfig (Just "127.0.0.1") (Just "9000")
+  (eError, eConnected) <- fanEither <$> connect (Just "127.0.0.1") "9000"
   eReportedError <-
     performEvent $
     (\e -> liftIO $ putStrLn "Error:\n" *> print e) <$>
-    _cError c
-  pure (() <$ eReportedError, connected <$> _cSocket c)
+    eError
+  pure (() <$ eReportedError, connected <$> eConnected)
 
 connected :: ClientCxt t m => NS.Socket -> Workflow t m (Event t ())
 connected s = Workflow $ mdo
   (eLine, onLine) <- newTriggerEvent
-  void . liftIO . forkIO . forever $
-    onLine . pure . BC.pack =<< getLine
+  void . liftIO . forkIO . forever $ onLine . BC.pack =<< getLine
 
-  let
-    sc = SocketConfig s 2048 eLine eQuit
-  so <- socket sc
-  performEvent_ $ liftIO . putStrLn . BC.unpack <$> _sReceive so
-  let
-    eQuit = _sClosed so
+  so <- socket $ SocketConfig s 2048 eLine eQuit
+  performEvent_ $ liftIO . BC.putStrLn <$> _sReceive so
 
+  let eQuit = _sClose so
   pure (eQuit, unconnected <$ eQuit)
+
+main :: IO ()
+main = basicHostWithQuit $ do
+  deQuit <- workflow unconnected
+  pure ((), switchDyn deQuit)
