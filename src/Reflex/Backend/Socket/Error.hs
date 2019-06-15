@@ -31,7 +31,7 @@ import Control.Lens.TH (makePrisms)
 -- these to find out why.
 data SetupError
   = GetAddrInfoError IOException
-    -- ^ Call to 'getAddrInfo' failed.
+    -- ^ Call to 'Network.Socket.getAddrInfo' failed.
   | UseAddrInfoError (NonEmpty (AddrInfo, IOException))
     -- ^ We failed to set up a socket with any 'AddrInfo' we were
     -- given, and here are the corresponding exceptions each time we
