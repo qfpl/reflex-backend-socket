@@ -1,8 +1,5 @@
-{-# LANGUAGE DeriveGeneric    #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TemplateHaskell  #-}
 {-# LANGUAGE TupleSections    #-}
-{-# LANGUAGE TypeApplications #-}
 
 {-|
 Copyright   : (c) 2018-2019, Commonwealth Scientific and Industrial Research Organisation
@@ -12,41 +9,19 @@ Stability   : experimental
 Portability : non-portable
 -}
 
-module Reflex.Backend.Socket.Connect
-  ( connect
-
-    -- * Result of @connect@
-  , ConnectError(..)
-
-    -- * Prisms
-    -- ** ConnectError
-  , _GetAddrInfoError
-  , _ConnectError
-  ) where
+module Reflex.Backend.Socket.Connect (connect) where
 
 import           Control.Concurrent (forkIO)
 import           Control.Exception (IOException, onException, try)
-import           Control.Lens.TH (makePrisms)
 import           Control.Monad.Except (ExceptT(..), runExceptT, withExceptT)
 import           Control.Monad.Trans (MonadIO(..))
 import           Data.Functor (($>), void)
 import           Data.List.NonEmpty (NonEmpty, fromList)
 import           Data.Semigroup.Foldable (asum1)
-import           GHC.Generics (Generic)
 import           Network.Socket (Socket, AddrInfo(..), defaultProtocol)
 import qualified Network.Socket as NS
 import           Reflex
-
--- | If 'connect' fails, you'll inspect one of these to find out why.
-data ConnectError
-  = GetAddrInfoError IOException
-    -- ^ Call to 'getAddrInfo' failed.
-  | ConnectError (NonEmpty (AddrInfo, IOException))
-    -- ^ We failed to connect to any 'AddrInfo' we were given, and
-    -- here are the corresponding exceptions each time we tried.
-  deriving (Eq, Generic, Show)
-
-$(makePrisms ''ConnectError)
+import           Reflex.Backend.Socket.Error (SetupError(..))
 
 -- | Connect to a remote endpoint. The connection happens in a
 -- background thread.
@@ -58,18 +33,18 @@ connect
      , MonadIO (Performable m)
      , MonadIO m
      )
-  => Maybe (NS.HostName)
+  => Maybe NS.HostName
      -- ^ Host to connect to. If 'Nothing', connect via loopback.
   -> NS.ServiceName
      -- ^ Service (port number or service name). See the
      -- <https://linux.die.net/man/3/getaddrinfo manpage for getaddrinfo>.
-  -> m (Event t (Either ConnectError Socket))
+  -> m (Event t (Either SetupError Socket))
      -- ^ This event will fire exactly once.
 connect mHost service = do
   ePostBuild <- getPostBuild
   performEventAsync $ ePostBuild $> \onRes -> void . liftIO . forkIO $
     let
-      getAddrs :: ExceptT ConnectError IO (NonEmpty AddrInfo)
+      getAddrs :: ExceptT SetupError IO (NonEmpty AddrInfo)
       getAddrs = withExceptT GetAddrInfoError . ExceptT . try $
         -- fromList is OK here, as getaddrinfo(3) is required to
         -- return a nonempty list of addrinfos.
@@ -90,5 +65,5 @@ connect mHost service = do
       res <- runExceptT $ do
         addrs <- getAddrs
         let attempts = tryConnect <$> addrs
-        withExceptT ConnectError $ asum1 attempts
+        withExceptT UseAddrInfoError $ asum1 attempts
       onRes res

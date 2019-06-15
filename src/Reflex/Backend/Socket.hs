@@ -21,18 +21,23 @@ module Reflex.Backend.Socket
     -- * Socket Output Events
   , Socket(..)
 
-  -- * Lenses
-  -- ** SocketConfig
+    -- * Lenses
+    -- ** SocketConfig
   , scInitSocket
   , scMaxRx
   , scSend
   , scClose
 
-  -- ** Socket
+    -- ** Socket
   , sReceive
   , sOpen
   , sClose
   , sError
+
+    -- * Convenience Re-Exports
+  , module Reflex.Backend.Socket.Accept
+  , module Reflex.Backend.Socket.Connect
+  , module Reflex.Backend.Socket.Error
   ) where
 
 import           Control.Concurrent (forkIO)
@@ -49,6 +54,9 @@ import           Data.These
 import qualified Network.Socket as NS
 import           Network.Socket.ByteString (sendAll, recv)
 import           Reflex
+import           Reflex.Backend.Socket.Accept
+import           Reflex.Backend.Socket.Connect
+import           Reflex.Backend.Socket.Error
 
 -- | Holds the socket to wire into the FRP network, and events that
 -- drive it.
@@ -83,7 +91,7 @@ data Socket t = Socket
     -- in response to a caught exception.
   , _sError :: Event t IOException
     -- ^ An exception occurred. Treat the socket as closed after you
-    -- see this. If the socket was open, you will see the '_sClosed'
+    -- see this. If the socket was open, you will see the '_sClose'
     -- event fire as well, but not necessarily in the same frame.
   }
 

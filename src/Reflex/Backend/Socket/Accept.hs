@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveGeneric    #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase       #-}
 {-# LANGUAGE TemplateHaskell  #-}
@@ -15,35 +14,30 @@ Portability : non-portable
 module Reflex.Backend.Socket.Accept
   ( accept
 
-    -- * Listen Socket Configuration
+    -- * Listen socket configuration
   , AcceptConfig(..)
 
     -- * Results of @accept@
   , Accept(..)
-  , AcceptError(..)
 
-    -- * Optics
-    -- ** AcceptConfig
+    -- * Lenses
+    -- ** 'AcceptConfig'
   , acHostname
   , acService
   , acListenQueue
   , acSocketOptions
   , acClose
 
-    -- ** Accept
+    -- ** 'Accept'
   , aAcceptSocket
   , aClose
   , aError
-
-    -- ** AcceptError
-  , _GetAddrInfoError
-  , _BindError
   ) where
 
 import           Control.Concurrent (forkIO)
 import qualified Control.Concurrent.STM as STM
 import           Control.Exception (IOException, onException, try)
-import           Control.Lens.TH (makeLenses, makePrisms)
+import           Control.Lens.TH (makeLenses)
 import           Control.Monad.Except (ExceptT(..), runExceptT, withExceptT)
 import           Control.Monad.STM (atomically)
 import           Control.Monad.Trans (MonadIO(..))
@@ -51,10 +45,10 @@ import           Data.Foldable (traverse_)
 import           Data.Functor (($>), void)
 import           Data.List.NonEmpty (NonEmpty, fromList)
 import           Data.Semigroup.Foldable (asum1)
-import           GHC.Generics (Generic)
 import           Network.Socket (AddrInfo(..), AddrInfoFlag(..), Socket)
 import qualified Network.Socket as NS
 import           Reflex
+import           Reflex.Backend.Socket.Error (SetupError(..))
 
 -- | Configuration of a listen socket.
 data AcceptConfig t = AcceptConfig
@@ -95,17 +89,6 @@ data Accept t = Accept
 
 $(makeLenses ''Accept)
 
--- | If 'accept' fails, you'll inspect one of these to find out why.
-data AcceptError
-  = GetAddrInfoError IOException
-    -- ^ Call to 'getAddrInfo' failed.
-  | BindError (NonEmpty (AddrInfo, IOException))
-    -- ^ We failed to bind any 'AddrInfo' we were given, and here are
-    -- the corresponding exceptions each time we tried.
-  deriving (Eq, Generic, Show)
-
-$(makePrisms ''AcceptError)
-
 -- | Create a listening socket. Sockets are accepted in a background
 -- thread.
 accept
@@ -117,14 +100,14 @@ accept
      , MonadIO m
      )
   => AcceptConfig t
-  -> m (Event t (Either AcceptError (Accept t)))
+  -> m (Event t (Either SetupError (Accept t)))
      -- ^ This event will fire exactly once.
 accept (AcceptConfig mHost mService listenQueue options eClose) = do
   (eAccept, onAccept) <- newTriggerEvent
   (eClosed, onClosed) <- newTriggerEvent
   (eError, onError) <- newTriggerEvent
 
-  isOpen <- liftIO $ STM.newEmptyTMVarIO
+  isOpen <- liftIO STM.newEmptyTMVarIO
 
   let
     start = liftIO $ makeListenSocket >>= \case
@@ -137,7 +120,7 @@ accept (AcceptConfig mHost mService listenQueue options eClose) = do
       where
         makeListenSocket =
           let
-            getAddrs :: ExceptT AcceptError IO (NonEmpty AddrInfo)
+            getAddrs :: ExceptT SetupError IO (NonEmpty AddrInfo)
             getAddrs = withExceptT GetAddrInfoError . ExceptT . try $
               -- fromList is OK here, as getaddrinfo(3) is required to
               -- return a nonempty list of addrinfos.
@@ -161,7 +144,7 @@ accept (AcceptConfig mHost mService listenQueue options eClose) = do
           in runExceptT $ do
             addrs <- getAddrs
             let attempts = tryListen <$> addrs
-            withExceptT BindError $ asum1 attempts
+            withExceptT UseAddrInfoError $ asum1 attempts
 
         acceptLoop =
           let

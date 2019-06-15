@@ -17,8 +17,9 @@ cabal-version:       >=1.10
 
 library
   exposed-modules:     Reflex.Backend.Socket
-                     , Reflex.Backend.Socket.Connect
                      , Reflex.Backend.Socket.Accept
+                     , Reflex.Backend.Socket.Connect
+                     , Reflex.Backend.Socket.Error
   build-depends:       base              >= 4.9     && < 4.13
                      , binary            >= 0.8     && < 0.11
                      , bytestring        >= 0.10    && < 0.11
