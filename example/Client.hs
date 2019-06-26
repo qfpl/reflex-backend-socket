@@ -56,4 +56,4 @@ connected s = Workflow $ mdo
 main :: IO ()
 main = basicHostWithQuit $ do
   deQuit <- workflow unconnected
-  pure ((), switchDyn deQuit)
+  pure (switchDyn deQuit)

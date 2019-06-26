@@ -28,7 +28,7 @@ connect1 = basicHostWithQuit $ do
   performEvent_ $ (liftIO . putStrLn $ "Connected") <$ eConnect
   performEvent_ $ liftIO . print <$> eError
 
-  pure ((), void eQuit)
+  pure (void eQuit)
 
 -- | Listen for connections, and log them as they come in. Does
 -- nothing with arriving connections, so will leak FDs.
@@ -79,7 +79,7 @@ connect2 = basicHostWithQuit $ mdo
         , void . ffilter isNothing $ updated dSocket
         ]
 
-  pure ((), eQuit)
+  pure eQuit
 
 main :: IO ()
 main = getArgs >>= \case

@@ -62,7 +62,7 @@ perConnection dSocket eTx = mdo
 
   pure (eOut, eShutdown, _sClose so)
 
-go :: forall t m. BasicGuestConstraints t m => BasicGuest t m ((), Event t ())
+go :: forall t m. BasicGuestConstraints t m => BasicGuest t m (Event t ())
 go = mdo
   (eListenError, eAccept) <- fanEither <$> accept
     (AcceptConfig (Just "127.0.0.1") (Just "9000") 1 [(NS.ReuseAddr, 1)] eQuit)
@@ -118,7 +118,7 @@ go = mdo
       , eListenClose -- Our listen socket was closed
       , eShutdown -- Client asked us to shutdown everything
       ]
-  pure ((), eQuit)
+  pure eQuit
 
 main :: IO ()
 main = basicHostWithQuit go
