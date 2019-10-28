@@ -1,4 +1,5 @@
 {-|
+Module      : Reflex.Backend.Socket.Error
 Copyright   : (c) 2018-2019, Commonwealth Scientific and Industrial Research Organisation
 License     : BSD3
 Maintainer  : dave.laing.80@gmail.com
