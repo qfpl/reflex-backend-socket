@@ -30,9 +30,10 @@ library
                      , mtl               >= 2.2     && < 2.3
                      , network           >= 2.6     && < 3.1
                      , reflex            >= 0.5     && < 0.7
-                     , semigroupoids     >= 5.2.2   && < 5.3
+                     , semialign         >= 1       && < 1.1
+                     , semigroupoids     >= 5.2.2   && < 5.4
                      , stm               >= 2.4     && < 2.6
-                     , these             >= 0.7     && < 0.9
+                     , these             >= 1       && < 1.1
                      , transformers      >= 0.5.5   && < 0.6
   hs-source-dirs:      src
   ghc-options:         -Wall -O
