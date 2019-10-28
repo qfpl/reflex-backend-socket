@@ -30,6 +30,11 @@ build-type:          Simple
 extra-source-files:  ChangeLog.md
 cabal-version:       >=1.10
 
+tested-with:         GHC == 8.0.2
+                   , GHC == 8.2.2
+                   , GHC == 8.4.4
+                   , GHC == 8.6.5
+
 library
   exposed-modules:     Reflex.Backend.Socket
                      , Reflex.Backend.Socket.Accept
