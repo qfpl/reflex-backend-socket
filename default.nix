@@ -6,15 +6,13 @@ let
   pkgs = reflex-platform.nixpkgs.pkgs;
   ghc = reflex-platform.${compiler};
 
-  sources = {
-    reflex-basic-host = import ./nix/reflex-basic-host.nix;
-    reflex-binary = import ./nix/reflex-binary.nix;
-  };
-
   modifiedHaskellPackages = ghc.override {
     overrides = self: super: {
-      reflex-basic-host = self.callPackage sources.reflex-basic-host {};
-      reflex-binary = self.callPackage sources.reflex-binary {};
+      reflex-basic-host = self.callHackageDirect {
+        pkg = "reflex-basic-host";
+        ver = "0.2";
+        sha256 = "10xi8gn7mbw4v5xgphs3mfh24am2vzh04c466if88ibs3mlgsdvy";
+      } {};
     };
   };
 
