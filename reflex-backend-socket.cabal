@@ -8,7 +8,7 @@ description:
   <<https://raw.githubusercontent.com/qfpl/assets/master/data61-transparent-bg.png>>
   .
   reflex-backend-socket provides functions to handle sockets using
-  Reflex @Event@s. Sending/receiving/waiting/accepting are all
+  Reflex @Event@s. Sending\/receiving\/waiting\/accepting are all
   performed on background threads.
   .
   The most important function in this library is
