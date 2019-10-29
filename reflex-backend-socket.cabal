@@ -29,11 +29,14 @@ category:            Network
 build-type:          Simple
 extra-source-files:  ChangeLog.md
 cabal-version:       >=1.10
-
 tested-with:         GHC == 8.0.2
                    , GHC == 8.2.2
                    , GHC == 8.4.4
                    , GHC == 8.6.5
+
+source-repository    head
+  type:              git
+  location:          git@github.com/qfpl/reflex-backend-socket.git
 
 library
   exposed-modules:     Reflex.Backend.Socket
@@ -56,7 +59,7 @@ library
                      , these             >= 1       && < 1.1
                      , transformers      >= 0.5.5   && < 0.6
   hs-source-dirs:      src
-  ghc-options:         -Wall -O
+  ghc-options:         -Wall
   default-language:    Haskell2010
 
 executable example-server
@@ -72,7 +75,7 @@ executable example-server
                      , reflex-backend-socket
                      , reflex-basic-host >= 0.2     && < 0.3
   hs-source-dirs:      example
-  ghc-options:         -Wall -O -threaded
+  ghc-options:         -Wall -threaded
   default-language:    Haskell2010
 
 executable example-client
@@ -87,7 +90,7 @@ executable example-client
                      , reflex-backend-socket
                      , reflex-basic-host >= 0.2     && < 0.3
   hs-source-dirs:      example
-  ghc-options:         -Wall -O -threaded
+  ghc-options:         -Wall -threaded
   default-language:    Haskell2010
 
 
@@ -104,5 +107,5 @@ executable example-others
                      , reflex-basic-host >= 0.2     && < 0.3
                      , witherable        >= 0.2     && < 0.4
   hs-source-dirs:      example
-  ghc-options:         -Wall -O -threaded
+  ghc-options:         -Wall -threaded
   default-language:    Haskell2010
