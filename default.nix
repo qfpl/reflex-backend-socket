@@ -1,13 +1,24 @@
-{ reflex-platform ? import ./nix/reflex-platform.nix
-, compiler   ? "ghc"
-} :
+{ nixpkgs ? import ./nix/nixpkgs.nix
+, compiler ? "default"
+, doBenchmark ? false
+}:
+
 let
+  inherit (nixpkgs) pkgs;
 
-  pkgs = reflex-platform.nixpkgs.pkgs;
-  ghc = reflex-platform.${compiler};
+  baseHaskellPackages = if compiler == "default"
+    then pkgs.haskellPackages
+    else pkgs.haskell.packages.${compiler};
 
-  modifiedHaskellPackages = ghc.override {
-    overrides = self: super: {
+  haskellPackages = baseHaskellPackages.override {
+    overrides = self: super: with pkgs.haskell.lib; {
+      # Required by reflex
+      dependent-map = super.dependent-map_0_3;
+      dependent-sum = super.dependent-sum_0_6_2_0;
+      monoidal-containers = super.monoidal-containers_0_6;
+      witherable = super.callHackage "witherable" "0.3.1" {};
+
+      reflex = enableCabalFlag (unmarkBroken super.reflex) "split-these";
       reflex-basic-host = self.callHackageDirect {
         pkg = "reflex-basic-host";
         ver = "0.2";
@@ -16,6 +27,6 @@ let
     };
   };
 
-  drv = modifiedHaskellPackages.callPackage ./reflex-backend-socket.nix {};
+  variant = if doBenchmark then pkgs.haskell.lib.doBenchmark else pkgs.lib.id;
 in
-  drv
+  variant (haskellPackages.callPackage ./reflex-backend-socket.nix {})
