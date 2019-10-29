@@ -18,6 +18,9 @@ let
       monoidal-containers = super.monoidal-containers_0_6;
       witherable = super.callHackage "witherable" "0.3.1" {};
 
+      # Test with new network
+      network = super.network_3_1_1_0;
+
       reflex = enableCabalFlag (unmarkBroken super.reflex) "split-these";
       reflex-basic-host = self.callHackageDirect {
         pkg = "reflex-basic-host";
