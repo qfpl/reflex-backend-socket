@@ -27,7 +27,7 @@ maintainer:          dave.laing.80@gmail.com, jack.kelly@data61.csiro.au
 homepage:            https://github.com/qfpl/reflex-backend-socket/
 bug-reports:         https://github.com/qfpl/reflex-backend-socket/issues
 copyright:           (c) 2018-2019, Commonwealth Scientific and Industrial Research Organisation
-category:            Network
+category:            FRP, Network
 build-type:          Simple
 extra-source-files:  ChangeLog.md
 cabal-version:       >=1.10
