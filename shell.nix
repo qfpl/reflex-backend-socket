@@ -4,7 +4,6 @@
 }:
 let
   inherit (nixpkgs) pkgs;
-  reflex-platform = import ./nix/reflex-platform.nix;
   env = (import ./. { inherit nixpkgs compiler doBenchmark; }).env;
 in
   env.overrideAttrs (oldAttrs: {
