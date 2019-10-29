@@ -4,11 +4,15 @@
 {-# LANGUAGE TupleSections    #-}
 
 {-|
+Module      : Reflex.Backend.Socket.Accept
 Copyright   : (c) 2018-2019, Commonwealth Scientific and Industrial Research Organisation
 License     : BSD3
 Maintainer  : dave.laing.80@gmail.com
 Stability   : experimental
 Portability : non-portable
+
+Use 'accept' to create listen sockets, and get an @'Event' t 'Socket'@
+of new connections.
 -}
 
 module Reflex.Backend.Socket.Accept

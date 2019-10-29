@@ -5,11 +5,17 @@
 {-# LANGUAGE TypeApplications    #-}
 
 {-|
+Module      : Reflex.Backend.Socket
+Description : Wrap a TCP socket to communicate through @Event t ByteString@
 Copyright   : (c) 2018-2019, Commonwealth Scientific and Industrial Research Organisation
 License     : BSD3
 Maintainer  : dave.laing.80@gmail.com
 Stability   : experimental
 Portability : non-portable
+
+Use 'socket' to wrap a network 'Socket' so that it sends out the
+firings of an @'Event' t 'ByteString'@, and fires any data that it
+receives on another @'Event' t 'ByteString'@.
 -}
 
 module Reflex.Backend.Socket

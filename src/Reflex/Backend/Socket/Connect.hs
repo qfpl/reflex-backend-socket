@@ -2,11 +2,16 @@
 {-# LANGUAGE TupleSections    #-}
 
 {-|
+Module      : Reflex.Backend.Socket.Connect
 Copyright   : (c) 2018-2019, Commonwealth Scientific and Industrial Research Organisation
 License     : BSD3
 Maintainer  : dave.laing.80@gmail.com
 Stability   : experimental
 Portability : non-portable
+
+Use 'connect' to attempt a connection to a remote endpoint, and get an
+@'Event' t ('Either' 'SetupError' 'Socket')@ that tells you whether or
+not it worked.
 -}
 
 module Reflex.Backend.Socket.Connect (connect) where

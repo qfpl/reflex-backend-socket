@@ -1,23 +1,32 @@
-{ reflex-platform ? import ./nix/reflex-platform.nix
-, compiler   ? "ghc"
-} :
+{ nixpkgs ? import ./nix/nixpkgs.nix
+, compiler ? "default"
+, doBenchmark ? false
+}:
+
 let
+  inherit (nixpkgs) pkgs;
 
-  pkgs = reflex-platform.nixpkgs.pkgs;
-  ghc = reflex-platform.${compiler};
+  baseHaskellPackages = if compiler == "default"
+    then pkgs.haskellPackages
+    else pkgs.haskell.packages.${compiler};
 
-  sources = {
-    reflex-basic-host = import ./nix/reflex-basic-host.nix;
-    reflex-binary = import ./nix/reflex-binary.nix;
-  };
+  haskellPackages = baseHaskellPackages.override {
+    overrides = self: super: with pkgs.haskell.lib; {
+      # Required by reflex
+      dependent-map = super.dependent-map_0_3;
+      dependent-sum = super.dependent-sum_0_6_2_0;
+      monoidal-containers = super.monoidal-containers_0_6;
+      witherable = super.callHackage "witherable" "0.3.1" {};
 
-  modifiedHaskellPackages = ghc.override {
-    overrides = self: super: {
-      reflex-basic-host = self.callPackage sources.reflex-basic-host {};
-      reflex-binary = self.callPackage sources.reflex-binary {};
+      reflex = enableCabalFlag (unmarkBroken super.reflex) "split-these";
+      reflex-basic-host = self.callHackageDirect {
+        pkg = "reflex-basic-host";
+        ver = "0.2";
+        sha256 = "10xi8gn7mbw4v5xgphs3mfh24am2vzh04c466if88ibs3mlgsdvy";
+      } {};
     };
   };
 
-  drv = modifiedHaskellPackages.callPackage ./reflex-backend-socket.nix {};
+  variant = if doBenchmark then pkgs.haskell.lib.doBenchmark else pkgs.lib.id;
 in
-  drv
+  variant (haskellPackages.callPackage ./reflex-backend-socket.nix {})
