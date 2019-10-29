@@ -1,5 +1,7 @@
 ![Data61 Logo](https://raw.githubusercontent.com/qfpl/assets/master/data61-transparent-bg.png)
 
+[![Build Status](https://travis-ci.org/qfpl/reflex-backend-socket.svg?branch=master)](https://travis-ci.org/qfpl/reflex-backend-socket)
+
 This library provides `reflex` support for writing TCP servers and
 clients. All the socket operations are wrapped to use Reflex `Event`s,
 and the underlying sending/receiving/waiting/accepting operations are
