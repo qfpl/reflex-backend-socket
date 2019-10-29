@@ -23,7 +23,7 @@ description:
 license:             BSD3
 license-file:        LICENSE
 author:              Dave Laing
-maintainer:          dave.laing.80@gmail.com
+maintainer:          dave.laing.80@gmail.com, jack.kelly@data61.csiro.au
 copyright:           (c) 2018-2019, Commonwealth Scientific and Industrial Research Organisation
 category:            Network
 build-type:          Simple

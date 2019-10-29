@@ -5,7 +5,7 @@
 Module      : Reflex.Backend.Socket.Connect
 Copyright   : (c) 2018-2019, Commonwealth Scientific and Industrial Research Organisation
 License     : BSD3
-Maintainer  : dave.laing.80@gmail.com
+Maintainer  : dave.laing.80@gmail.com, jack.kelly@data61.csiro.au
 Stability   : experimental
 Portability : non-portable
 
