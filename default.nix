@@ -1,15 +1,9 @@
-{ nixpkgs ? import ./nix/nixpkgs.nix
-, compiler ? "default"
-, doBenchmark ? false
-}:
-
-let
-  inherit (nixpkgs) pkgs;
-
-  haskellPackages = if compiler == "default"
-    then pkgs.haskellPackages
-    else pkgs.haskell.packages.${compiler};
-
-  variant = if doBenchmark then pkgs.haskell.lib.doBenchmark else pkgs.lib.id;
-in
-  variant (haskellPackages.callPackage ./reflex-backend-socket.nix {})
+(import (
+  let
+    lock = builtins.fromJSON (builtins.readFile ./flake.lock);
+  in fetchTarball {
+    url = "https://github.com/edolstra/flake-compat/archive/${lock.nodes.flake-compat.locked.rev}.tar.gz";
+    sha256 = lock.nodes.flake-compat.locked.narHash; }
+) {
+    src =  ./.;
+}).defaultNix
