@@ -1,6 +1,6 @@
 # Revision history for reflex-backend-socket
 
-## 0.2.0.1  -- Unreleased
+## 0.2.0.1  -- 2022-05-21
 
 * Raised some upper bounds
 * Examples now use `Reflex.Host.Headless` from `reflex` instead of
