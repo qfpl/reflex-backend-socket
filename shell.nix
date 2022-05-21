@@ -1,13 +1,13 @@
-{ nixpkgs ? import ./nix/nixpkgs.nix
-, compiler ? "default"
-, doBenchmark ? false
-}:
-let
-  inherit (nixpkgs) pkgs;
-  env = (import ./. { inherit nixpkgs compiler doBenchmark; }).env;
-in
-  env.overrideAttrs (oldAttrs: {
-    buildInputs = with pkgs.haskellPackages; oldAttrs.buildInputs ++ [
-      cabal-install cabal2nix ghcid
-    ];
-  })
+(import
+  (
+    let
+      lock = builtins.fromJSON (builtins.readFile ./flake.lock);
+    in
+    fetchTarball {
+      url = "https://github.com/edolstra/flake-compat/archive/${lock.nodes.flake-compat.locked.rev}.tar.gz";
+      sha256 = lock.nodes.flake-compat.locked.narHash;
+    }
+  )
+  {
+    src = ./.;
+  }).shellNix
